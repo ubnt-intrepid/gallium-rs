@@ -1,0 +1,7 @@
+**/*.rs.bk
+**/*.rs.rustfmt
+
+/data/
+/target/
+/.env
+/docker/sshd/bin/

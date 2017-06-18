@@ -1,0 +1,27 @@
+[package]
+name = "gallium"
+version = "0.1.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+
+[lib]
+name = "gallium"
+path = "src/lib.rs"
+doc = true
+
+[[bin]]
+name = "register_pubkey"
+path = "src/bin/register_pubkey.rs"
+doc = false
+
+[[bin]]
+name = "show_pubkeys"
+path = "src/bin/show_pubkeys.rs"
+doc = false
+
+
+[dependencies]
+clap = "~2.24"
+diesel = { version = "~0.13", features = ["postgres","chrono"] }
+diesel_codegen = { version = "~0.13", features = ["postgres"] }
+chrono = "~0.3"
+dotenv = "~0.9"

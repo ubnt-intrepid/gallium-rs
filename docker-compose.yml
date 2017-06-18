@@ -1,0 +1,20 @@
+version: '2'
+services:
+  sshd:
+    build: ./docker/sshd
+    image: ubntintrepid/sshd:latest
+    ports:
+      - "48895:22"
+    volumes:
+      - "./data/sshd:/data"
+    links:
+      - "postgres:db"
+    environment:
+      DATABASE_URL: postgres://postgres@db:5432/gallium
+
+  postgres:
+    image: postgres:9.6-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - "./data/postgres:/var/lib/postgresql/data"
