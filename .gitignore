@@ -4,4 +4,4 @@
 /data/
 /target/
 /.env
-/docker/sshd/bin/
+/.crates.toml

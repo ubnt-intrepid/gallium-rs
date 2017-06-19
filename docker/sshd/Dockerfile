@@ -11,13 +11,8 @@ RUN echo 'git:git' | chpasswd
 
 COPY sshd_config /etc/ssh/sshd_config
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY bin/show_pubkeys /usr/local/bin/show_pubkeys
 COPY show_authorized_keys.sh /usr/local/bin/show_authorized_keys.sh
-RUN chmod 0700 /usr/local/bin/show_pubkeys
-RUN chown git:git /usr/local/bin/show_pubkeys
 
 EXPOSE 22
-
-VOLUME ["/data"]
-
+VOLUME [ "/data", "/opt/bin" ]
 CMD [ "/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf" ]

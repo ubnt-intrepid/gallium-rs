@@ -6,6 +6,7 @@ services:
     ports:
       - "48895:22"
     volumes:
+      - "./bin:/opt/bin"
       - "./data/sshd:/data"
     links:
       - "postgres:db"
