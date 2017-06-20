@@ -85,7 +85,7 @@ fn packet_write(data: &str) -> String {
     s
 }
 
-fn handler(req: &mut Request) -> IronResult<Response> {
+fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
 
     let route = req.extensions.get::<Router>().unwrap();
@@ -105,13 +105,40 @@ fn handler(req: &mut Request) -> IronResult<Response> {
     ))));
     response.set_mut(Header(CacheControl(vec![CacheDirective::NoCache])));
     response.set_mut(body);
-
     Ok(response)
+}
+
+fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
+    match req.headers.get::<ContentType>() {
+        Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
+            if format!("x-git-{}-request", service) == s.as_str() => (),
+        _ => return Err(IronError::new(CustomError, status::Unauthorized)),
+    }
+
+    // TODO: handle GZIP compression
+    // TODO: get response of `git 'service' --stateless-rpc
+
+    let mut response = Response::new();
+    response.set_mut(Header(ContentType(Mime(
+        TopLevel::Application,
+        SubLevel::Ext(format!("x-git-{}-result", service)),
+        Vec::new(),
+    ))));
+    Ok(Response::with((status::Ok)))
 }
 
 fn main() {
     let mut router = Router::new();
-    router.get("/:project/info/refs", handler, "info_refs");
-
+    router.get("/:project/info/refs", handle_info_refs, "info_refs");
+    router.post(
+        "/:project/git-upload-pack",
+        |req: &mut Request| handle_service_rpc(req, "upload-pack"),
+        "upload-pack",
+    );
+    router.post(
+        "/:project/git-receive-pack",
+        |req: &mut Request| handle_service_rpc(req, "receive-pack"),
+        "receive-pack",
+    );
     Iron::new(router).http("0.0.0.0:3000").unwrap();
 }
