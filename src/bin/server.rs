@@ -3,16 +3,19 @@ extern crate iron;
 extern crate mount;
 extern crate router;
 extern crate urlencoded;
+extern crate flate2;
 
+use std::io::{Read, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use iron::prelude::*;
 use iron::status;
-use iron::headers::{CacheControl, CacheDirective, ContentType};
+use iron::headers::{CacheControl, CacheDirective, ContentType, ContentEncoding, Encoding};
 use iron::modifiers::Header;
 use iron::mime::{Mime, TopLevel, SubLevel};
 use router::Router;
 use urlencoded::UrlEncodedQuery;
+use flate2::read::GzDecoder;
 
 #[derive(Debug)]
 struct CustomError;
@@ -109,14 +112,51 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
 }
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
+    let route = req.extensions.get::<Router>().unwrap();
+    let project = route.find("project").unwrap();
+
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
             if format!("x-git-{}-request", service) == s.as_str() => (),
         _ => return Err(IronError::new(CustomError, status::Unauthorized)),
     }
 
-    // TODO: handle GZIP compression
-    // TODO: get response of `git 'service' --stateless-rpc
+    let mut body_reader: Box<Read> = match req.headers.get::<ContentEncoding>() {
+        Some(&ContentEncoding(ref enc)) => {
+            if enc.iter()
+                .find(|&e| if let &Encoding::Gzip = e { true } else { false })
+                .is_some()
+            {
+                let read = GzDecoder::new(&mut req.body).unwrap();
+                Box::new(read)
+            } else {
+                Box::new(&mut req.body)
+            }
+        }
+        _ => Box::new(&mut req.body),
+    };
+
+    let mut req_body = String::new();
+    body_reader.read_to_string(&mut req_body).unwrap();
+
+    let repo_path = Path::new("/data").join(project);
+    let mut child: Child = Command::new("/usr/bin/git")
+        .args(&[service, "--stateless-rpc", repo_path.to_str().unwrap()])
+        .current_dir(repo_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(req_body.as_bytes())
+        .unwrap();
+    let body = child
+        .wait_with_output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap();
 
     let mut response = Response::new();
     response.set_mut(Header(ContentType(Mime(
@@ -124,7 +164,8 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         SubLevel::Ext(format!("x-git-{}-result", service)),
         Vec::new(),
     ))));
-    Ok(Response::with((status::Ok)))
+    response.set_mut(body);
+    Ok(response)
 }
 
 fn main() {
