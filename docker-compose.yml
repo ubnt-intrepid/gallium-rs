@@ -1,13 +1,13 @@
 version: '2'
 services:
-  sshd:
+  gallium:
     build: .
-    image: ubntintrepid/sshd:latest
+    image: ubntintrepid/gallium:latest
     ports:
       - "48895:22"
     volumes:
-      - "./bin:/opt/bin"
-      - "./data/sshd:/data"
+      - "./bin:/opt/gallium/bin"
+      - "./data/gallium:/data"
     links:
       - "db"
     environment:
@@ -18,4 +18,4 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - "./data/postgres:/var/lib/postgresql/data"
+      - "./data/db:/var/lib/postgresql/data"

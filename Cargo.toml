@@ -9,15 +9,9 @@ path = "src/lib.rs"
 doc = true
 
 [[bin]]
-name = "register_pubkey"
-path = "src/bin/register_pubkey.rs"
+name = "pubkey"
+path = "src/bin/pubkey.rs"
 doc = false
-
-[[bin]]
-name = "show_pubkeys"
-path = "src/bin/show_pubkeys.rs"
-doc = false
-
 
 [dependencies]
 clap = "~2.24"
