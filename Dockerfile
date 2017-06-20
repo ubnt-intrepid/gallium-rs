@@ -13,6 +13,6 @@ COPY conf/sshd_config /etc/ssh/sshd_config
 COPY conf/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY conf/show_authorized_keys.sh /usr/local/bin/show_authorized_keys.sh
 
-EXPOSE 22
+EXPOSE 22 3000
 VOLUME [ "/data", "/opt/gallium/bin" ]
 CMD [ "/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf" ]

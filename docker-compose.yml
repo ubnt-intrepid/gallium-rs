@@ -4,6 +4,7 @@ services:
     build: .
     image: ubntintrepid/gallium:latest
     ports:
+      - "3000:3000"
       - "48895:22"
     volumes:
       - "./bin:/opt/gallium/bin"

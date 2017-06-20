@@ -13,9 +13,19 @@ name = "pubkey"
 path = "src/bin/pubkey.rs"
 doc = false
 
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+doc = false
+
 [dependencies]
 clap = "~2.24"
 diesel = { version = "~0.13", features = ["postgres","chrono"] }
 diesel_codegen = { version = "~0.13", features = ["postgres"] }
 chrono = "~0.3"
 dotenv = "~0.9"
+iron = "~0.5"
+router = "~0.5"
+mount = "~0.3"
+regex = "~0.2"
+urlencoded = "~0.5"
