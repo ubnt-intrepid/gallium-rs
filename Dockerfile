@@ -9,9 +9,9 @@ RUN apt-get update \
 RUN useradd -ms /usr/bin/git-shell -d /data git
 RUN echo 'git:git' | chpasswd
 
-COPY sshd_config /etc/ssh/sshd_config
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY show_authorized_keys.sh /usr/local/bin/show_authorized_keys.sh
+COPY conf/sshd_config /etc/ssh/sshd_config
+COPY conf/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY conf/show_authorized_keys.sh /usr/local/bin/show_authorized_keys.sh
 
 EXPOSE 22
 VOLUME [ "/data", "/opt/bin" ]

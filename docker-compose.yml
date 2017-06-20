@@ -1,7 +1,7 @@
 version: '2'
 services:
   sshd:
-    build: ./docker/sshd
+    build: .
     image: ubntintrepid/sshd:latest
     ports:
       - "48895:22"
@@ -9,11 +9,11 @@ services:
       - "./bin:/opt/bin"
       - "./data/sshd:/data"
     links:
-      - "postgres:db"
+      - "db"
     environment:
       DATABASE_URL: postgres://postgres@db:5432/gallium
 
-  postgres:
+  db:
     image: postgres:9.6-alpine
     ports:
       - "5432:5432"
