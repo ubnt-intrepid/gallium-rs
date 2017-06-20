@@ -4,11 +4,6 @@ extern crate mount;
 extern crate router;
 extern crate urlencoded;
 extern crate flate2;
-extern crate iron_slog;
-#[macro_use]
-extern crate slog;
-extern crate slog_term;
-extern crate slog_async;
 
 use std::fs::OpenOptions;
 use std::io::{self, Read};
@@ -22,8 +17,6 @@ use iron::mime::{Mime, TopLevel, SubLevel};
 use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
-use slog::{Drain, Logger};
-use iron_slog::{LoggerMiddleware, DefaultLogFormatter};
 
 #[derive(Debug)]
 struct CustomError;
@@ -213,62 +206,37 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         .spawn()
         .unwrap();
     io::copy(&mut body_reader, child.stdin.as_mut().unwrap()).unwrap();
+    let body = child.wait_with_output().map(|o| o.stdout).unwrap();
 
-    let body = child
-        .wait_with_output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap();
-
-    let mut response = Response::new();
-    response.set_mut(Header(ContentType(Mime(
-        TopLevel::Application,
-        SubLevel::Ext(format!("x-git-{}-result", service)),
-        Vec::new(),
-    ))));
-    response.set_mut(body);
-    Ok(response)
+    Ok(Response::with((
+        status::Ok,
+        Header(ContentType(Mime(
+            TopLevel::Application,
+            SubLevel::Ext(format!("x-git-{}-result", service)),
+            Vec::new(),
+        ))),
+        body,
+    )))
 }
 
-fn main() {
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    let logger = Logger::root(drain, o!());
-
-    let mut router = Router::new();
-    router.get("/:project/info/refs", handle_info_refs, "info_refs");
-    router.post(
-        "/:project/git-upload-pack",
-        |req: &mut Request| handle_service_rpc(req, "upload-pack"),
-        "upload-pack",
-    );
-    router.post(
-        "/:project/git-receive-pack",
-        |req: &mut Request| handle_service_rpc(req, "receive-pack"),
-        "receive-pack",
-    );
-
+fn register_dump_handlers(router: &mut Router) {
     router.get(
         "/:project/HEAD",
         |req: &mut Request| handle_textfile(repo_path(req).join("HEAD")),
         "head",
-    );
-    router.get(
+    ).get(
         "/:project/objects/info/alternates",
         |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/alternates")),
         "alternates",
-    );
-    router.get(
+    ).get(
         "/:project/objects/info/http-alternates",
         |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/http-alternates")),
         "http-alternates",
-    );
-    router.get(
+    ).get(
         "/:project/objects/info/packs",
         |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/packs")),
         "info-packs",
-    );
-    router.get(
+    ).get(
         "/:project/objects/info/:file",
         |req: &mut Request| {
             let route = req.extensions.get::<Router>().unwrap();
@@ -276,8 +244,7 @@ fn main() {
             handle_textfile(repo_path(req).join("objects/info").join(file))
         },
         "info-files",
-    );
-    router.get(
+    ).get(
         "/:project/objects/:prefix/:suffix",
         |req: &mut Request| {
             let route = req.extensions.get::<Router>().unwrap();
@@ -294,8 +261,7 @@ fn main() {
                 })
         },
         "object",
-    );
-    router.get(
+    ).get(
         "/:project/objects/pack/:file",
         |req: &mut Request| {
             let route = req.extensions.get::<Router>().unwrap();
@@ -320,7 +286,27 @@ fn main() {
         },
         "pack",
     );
+}
 
-    let handler = LoggerMiddleware::new(router, logger, DefaultLogFormatter);
-    Iron::new(handler).http("0.0.0.0:3000").unwrap();
+fn register_smart_handlers(router: &mut Router) {
+    router
+        .get("/:project/info/refs", handle_info_refs, "info_refs")
+        .post(
+            "/:project/git-receive-pack",
+            |req: &mut Request| handle_service_rpc(req, "receive-pack"),
+            "receive-pack",
+        )
+        .post(
+            "/:project/git-upload-pack",
+            |req: &mut Request| handle_service_rpc(req, "upload-pack"),
+            "upload-pack",
+        );
+}
+
+fn main() {
+    let mut router = Router::new();
+    register_smart_handlers(&mut router);
+    register_dump_handlers(&mut router);
+
+    Iron::new(router).http("0.0.0.0:3000").unwrap();
 }
