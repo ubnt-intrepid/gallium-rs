@@ -14,5 +14,5 @@ COPY conf/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY conf/show_authorized_keys.sh /usr/local/bin/show_authorized_keys.sh
 
 EXPOSE 22 3000
-VOLUME [ "/data", "/opt/gallium/bin" ]
+VOLUME [ "/data", "/opt/gallium" ]
 CMD [ "/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf" ]

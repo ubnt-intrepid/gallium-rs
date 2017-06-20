@@ -7,11 +7,11 @@ services:
       - "48895:22"
     volumes:
       - "./bin:/opt/gallium/bin"
+      - "./.env:/opt/gallium/.env"
       - "./data/gallium:/data"
     links:
       - "db"
-    environment:
-      DATABASE_URL: postgres://postgres@db:5432/gallium
+    env_file: .env
 
   nginx:
     image: nginx:latest
