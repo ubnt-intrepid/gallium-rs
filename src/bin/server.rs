@@ -8,7 +8,7 @@ extern crate flate2;
 use std::fs::OpenOptions;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use iron::prelude::*;
 use iron::status;
 use iron::headers::{CacheControl, CacheDirective, ContentType, ContentEncoding, Encoding};
@@ -37,36 +37,7 @@ fn repo_path(req: &Request) -> PathBuf {
     Path::new("/data").join(project)
 }
 
-fn handle_textfile<P: AsRef<Path>>(path: P) -> IronResult<Response> {
-    if !path.as_ref().is_file() {
-        return Err(IronError::new(CustomError, status::NotFound));
-    }
-
-    let content = OpenOptions::new()
-        .read(true)
-        .open(&path)
-        .and_then(|mut f| {
-            let mut content = String::new();
-            f.read_to_string(&mut content).map(|_| content)
-        })
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                format!(
-                    "failed to read content: {}",
-                    path.as_ref().display()
-                ),
-            ))
-        })?;
-    Ok(Response::with((
-        status::Ok,
-        Header(CacheControl(vec![CacheDirective::NoCache])),
-        Header(ContentType::plaintext()),
-        content,
-    )))
-}
-
-fn handle_binaryfile<P: AsRef<Path>>(path: P) -> IronResult<Response> {
+fn handle_staticfile<P: AsRef<Path>>(path: P, content_type: Option<Mime>) -> IronResult<Response> {
     if !path.as_ref().is_file() {
         return Err(IronError::new(CustomError, status::NotFound));
     }
@@ -79,18 +50,15 @@ fn handle_binaryfile<P: AsRef<Path>>(path: P) -> IronResult<Response> {
             f.read_to_end(&mut content).map(|_| content)
         })
         .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                format!(
-                    "failed to read content: {}",
-                    path.as_ref().display()
-                ),
-            ))
+            IronError::new(err, (status::InternalServerError, "failed to read content"))
         })?;
+
     Ok(Response::with((
         status::Ok,
         Header(CacheControl(vec![CacheDirective::NoCache])),
-        Header(ContentType::plaintext()),
+        Header(content_type.map(ContentType).unwrap_or_else(
+            || ContentType::plaintext(),
+        )),
         content,
     )))
 }
@@ -162,16 +130,16 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     body += "0000";
     body += &refs;
 
-    let mut response = Response::new();
-    response.set_mut(status::Ok);
-    response.set_mut(Header(ContentType(Mime(
-        TopLevel::Application,
-        SubLevel::Ext(format!("x-git-{}-advertisement", service)),
-        Vec::new(),
-    ))));
-    response.set_mut(Header(CacheControl(vec![CacheDirective::NoCache])));
-    response.set_mut(body);
-    Ok(response)
+    Ok(Response::with((
+        status::Ok,
+        Header(CacheControl(vec![CacheDirective::NoCache])),
+        Header(ContentType(Mime(
+            TopLevel::Application,
+            SubLevel::Ext(format!("x-git-{}-advertisement", service)),
+            Vec::new(),
+        ))),
+        body,
+    )))
 }
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
@@ -189,8 +157,9 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
                 .find(|&e| if let &Encoding::Gzip = e { true } else { false })
                 .is_some()
             {
-                let read = GzDecoder::new(&mut req.body).unwrap();
-                Box::new(read)
+                GzDecoder::new(&mut req.body)
+                    .map_err(|err| IronError::new(err, status::InternalServerError))
+                    .map(Box::new)?
             } else {
                 Box::new(&mut req.body)
             }
@@ -198,15 +167,18 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         _ => Box::new(&mut req.body),
     };
 
-    let mut child: Child = Command::new("/usr/bin/git")
+    let body = Command::new("/usr/bin/git")
         .args(&[service, "--stateless-rpc", repo_path.to_str().unwrap()])
         .current_dir(repo_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
-        .unwrap();
-    io::copy(&mut body_reader, child.stdin.as_mut().unwrap()).unwrap();
-    let body = child.wait_with_output().map(|o| o.stdout).unwrap();
+        .and_then(|mut child| {
+            io::copy(&mut body_reader, child.stdin.as_mut().unwrap()).map(|_| child)
+        })
+        .and_then(|child| child.wait_with_output().map(|o| o.stdout))
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     Ok(Response::with((
         status::Ok,
@@ -222,26 +194,26 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
 fn register_dump_handlers(router: &mut Router) {
     router.get(
         "/:project/HEAD",
-        |req: &mut Request| handle_textfile(repo_path(req).join("HEAD")),
+        |req: &mut Request| handle_staticfile(repo_path(req).join("HEAD"), None),
         "head",
     ).get(
         "/:project/objects/info/alternates",
-        |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/alternates")),
+        |req: &mut Request| handle_staticfile(repo_path(req).join("objects/info/alternates"), None),
         "alternates",
     ).get(
         "/:project/objects/info/http-alternates",
-        |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/http-alternates")),
+        |req: &mut Request| handle_staticfile(repo_path(req).join("objects/info/http-alternates"), None),
         "http-alternates",
     ).get(
         "/:project/objects/info/packs",
-        |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/packs")),
+        |req: &mut Request| handle_staticfile(repo_path(req).join("objects/info/packs"), None),
         "info-packs",
     ).get(
         "/:project/objects/info/:file",
         |req: &mut Request| {
             let route = req.extensions.get::<Router>().unwrap();
             let file = route.find("file").unwrap();
-            handle_textfile(repo_path(req).join("objects/info").join(file))
+            handle_staticfile(repo_path(req).join("objects/info").join(file), None)
         },
         "info-files",
     ).get(
@@ -250,15 +222,12 @@ fn register_dump_handlers(router: &mut Router) {
             let route = req.extensions.get::<Router>().unwrap();
             let prefix = route.find("prefix").unwrap();
             let suffix = route.find("suffix").unwrap();
-            handle_binaryfile(repo_path(req).join("objects").join(prefix).join(suffix))
-                .map(|mut res| {
-                    res.set_mut(Header(ContentType(Mime(
+            handle_staticfile(repo_path(req).join("objects").join(prefix).join(suffix),
+                    Some(Mime(
                         TopLevel::Application,
                         SubLevel::Ext("x-git-loose-object".to_string()),
                         Vec::new(),
-                    ))));
-                    res
-                })
+                    )))
         },
         "object",
     ).get(
@@ -266,23 +235,19 @@ fn register_dump_handlers(router: &mut Router) {
         |req: &mut Request| {
             let route = req.extensions.get::<Router>().unwrap();
             let file = route.find("file").unwrap();
-            handle_binaryfile(repo_path(req).join("objects/pack").join(file)).map(|mut res| {
-                if file.ends_with(".pack") {
-                    res.set_mut(Header(ContentType(Mime(
+            let content_type = if file.ends_with(".pack") {
+                "x-git-packed-objects".to_string()
+            } else if file.ends_with(".idx") {
+                "x-git-packed-objects-toc".to_string()
+            } else {
+                return Err(IronError::new(CustomError, status::NotFound));
+            };
+            handle_staticfile(repo_path(req).join("objects/pack").join(file),
+                    Some(Mime(
                         TopLevel::Application,
-                        SubLevel::Ext("x-git-packed-objects".to_string()),
+                        SubLevel::Ext(content_type),
                         Vec::new(),
-                    ))));
-                }
-                if file.ends_with(".idx") {
-                    res.set_mut(Header(ContentType(Mime(
-                        TopLevel::Application,
-                        SubLevel::Ext("x-git-packed-objects-toc".to_string()),
-                        Vec::new(),
-                    ))));
-                }
-                res
-            })
+                    )))
         },
         "pack",
     );
