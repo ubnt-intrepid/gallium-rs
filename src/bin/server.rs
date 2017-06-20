@@ -45,14 +45,55 @@ fn repo_path(req: &Request) -> PathBuf {
 }
 
 fn handle_textfile<P: AsRef<Path>>(path: P) -> IronResult<Response> {
+    if !path.as_ref().is_file() {
+        return Err(IronError::new(CustomError, status::NotFound));
+    }
+
     let content = OpenOptions::new()
         .read(true)
-        .open(path)
+        .open(&path)
         .and_then(|mut f| {
             let mut content = String::new();
             f.read_to_string(&mut content).map(|_| content)
         })
-        .unwrap();
+        .map_err(|err| {
+            IronError::new(err, (
+                status::InternalServerError,
+                format!(
+                    "failed to read content: {}",
+                    path.as_ref().display()
+                ),
+            ))
+        })?;
+    Ok(Response::with((
+        status::Ok,
+        Header(CacheControl(vec![CacheDirective::NoCache])),
+        Header(ContentType::plaintext()),
+        content,
+    )))
+}
+
+fn handle_binaryfile<P: AsRef<Path>>(path: P) -> IronResult<Response> {
+    if !path.as_ref().is_file() {
+        return Err(IronError::new(CustomError, status::NotFound));
+    }
+
+    let content = OpenOptions::new()
+        .read(true)
+        .open(&path)
+        .and_then(|mut f| {
+            let mut content = Vec::new();
+            f.read_to_end(&mut content).map(|_| content)
+        })
+        .map_err(|err| {
+            IronError::new(err, (
+                status::InternalServerError,
+                format!(
+                    "failed to read content: {}",
+                    path.as_ref().display()
+                ),
+            ))
+        })?;
     Ok(Response::with((
         status::Ok,
         Header(CacheControl(vec![CacheDirective::NoCache])),
@@ -242,7 +283,7 @@ fn main() {
             let route = req.extensions.get::<Router>().unwrap();
             let prefix = route.find("prefix").unwrap();
             let suffix = route.find("suffix").unwrap();
-            handle_textfile(repo_path(req).join("objects").join(prefix).join(suffix))
+            handle_binaryfile(repo_path(req).join("objects").join(prefix).join(suffix))
                 .map(|mut res| {
                     res.set_mut(Header(ContentType(Mime(
                         TopLevel::Application,
@@ -259,7 +300,7 @@ fn main() {
         |req: &mut Request| {
             let route = req.extensions.get::<Router>().unwrap();
             let file = route.find("file").unwrap();
-            handle_textfile(repo_path(req).join("objects/pack").join(file)).map(|mut res| {
+            handle_binaryfile(repo_path(req).join("objects/pack").join(file)).map(|mut res| {
                 if file.ends_with(".pack") {
                     res.set_mut(Header(ContentType(Mime(
                         TopLevel::Application,
