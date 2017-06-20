@@ -4,9 +4,15 @@ extern crate mount;
 extern crate router;
 extern crate urlencoded;
 extern crate flate2;
+extern crate iron_slog;
+#[macro_use]
+extern crate slog;
+extern crate slog_term;
+extern crate slog_async;
 
-use std::io::{Read, Write};
-use std::path::Path;
+use std::fs::OpenOptions;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use iron::prelude::*;
 use iron::status;
@@ -16,6 +22,8 @@ use iron::mime::{Mime, TopLevel, SubLevel};
 use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
+use slog::{Drain, Logger};
+use iron_slog::{LoggerMiddleware, DefaultLogFormatter};
 
 #[derive(Debug)]
 struct CustomError;
@@ -28,6 +36,29 @@ impl std::error::Error for CustomError {
     fn description(&self) -> &str {
         "custom error"
     }
+}
+
+fn repo_path(req: &Request) -> PathBuf {
+    let route = req.extensions.get::<Router>().unwrap();
+    let project = route.find("project").unwrap();
+    Path::new("/data").join(project)
+}
+
+fn handle_textfile<P: AsRef<Path>>(path: P) -> IronResult<Response> {
+    let content = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .and_then(|mut f| {
+            let mut content = String::new();
+            f.read_to_string(&mut content).map(|_| content)
+        })
+        .unwrap();
+    Ok(Response::with((
+        status::Ok,
+        Header(CacheControl(vec![CacheDirective::NoCache])),
+        Header(ContentType::plaintext()),
+        content,
+    )))
 }
 
 fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
@@ -90,11 +121,9 @@ fn packet_write(data: &str) -> String {
 
 fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
+    let repo_path = repo_path(req);
 
-    let route = req.extensions.get::<Router>().unwrap();
-    let project = route.find("project").unwrap();
-
-    let refs = git_command(service, Path::new("/data").join(project))?;
+    let refs = git_command(service, repo_path)?;
     let mut body = packet_write(&format!("# service=git-{}\n", service));
     body += "0000";
     body += &refs;
@@ -112,8 +141,7 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
 }
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
-    let route = req.extensions.get::<Router>().unwrap();
-    let project = route.find("project").unwrap();
+    let repo_path = repo_path(req);
 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
@@ -136,10 +164,6 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         _ => Box::new(&mut req.body),
     };
 
-    let mut req_body = String::new();
-    body_reader.read_to_string(&mut req_body).unwrap();
-
-    let repo_path = Path::new("/data").join(project);
     let mut child: Child = Command::new("/usr/bin/git")
         .args(&[service, "--stateless-rpc", repo_path.to_str().unwrap()])
         .current_dir(repo_path)
@@ -147,12 +171,8 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(req_body.as_bytes())
-        .unwrap();
+    io::copy(&mut body_reader, child.stdin.as_mut().unwrap()).unwrap();
+
     let body = child
         .wait_with_output()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
@@ -169,6 +189,11 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
 }
 
 fn main() {
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::CompactFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    let logger = Logger::root(drain, o!());
+
     let mut router = Router::new();
     router.get("/:project/info/refs", handle_info_refs, "info_refs");
     router.post(
@@ -181,5 +206,80 @@ fn main() {
         |req: &mut Request| handle_service_rpc(req, "receive-pack"),
         "receive-pack",
     );
-    Iron::new(router).http("0.0.0.0:3000").unwrap();
+
+    router.get(
+        "/:project/HEAD",
+        |req: &mut Request| handle_textfile(repo_path(req).join("HEAD")),
+        "head",
+    );
+    router.get(
+        "/:project/objects/info/alternates",
+        |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/alternates")),
+        "alternates",
+    );
+    router.get(
+        "/:project/objects/info/http-alternates",
+        |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/http-alternates")),
+        "http-alternates",
+    );
+    router.get(
+        "/:project/objects/info/packs",
+        |req: &mut Request| handle_textfile(repo_path(req).join("objects/info/packs")),
+        "info-packs",
+    );
+    router.get(
+        "/:project/objects/info/:file",
+        |req: &mut Request| {
+            let route = req.extensions.get::<Router>().unwrap();
+            let file = route.find("file").unwrap();
+            handle_textfile(repo_path(req).join("objects/info").join(file))
+        },
+        "info-files",
+    );
+    router.get(
+        "/:project/objects/:prefix/:suffix",
+        |req: &mut Request| {
+            let route = req.extensions.get::<Router>().unwrap();
+            let prefix = route.find("prefix").unwrap();
+            let suffix = route.find("suffix").unwrap();
+            handle_textfile(repo_path(req).join("objects").join(prefix).join(suffix))
+                .map(|mut res| {
+                    res.set_mut(Header(ContentType(Mime(
+                        TopLevel::Application,
+                        SubLevel::Ext("x-git-loose-object".to_string()),
+                        Vec::new(),
+                    ))));
+                    res
+                })
+        },
+        "object",
+    );
+    router.get(
+        "/:project/objects/pack/:file",
+        |req: &mut Request| {
+            let route = req.extensions.get::<Router>().unwrap();
+            let file = route.find("file").unwrap();
+            handle_textfile(repo_path(req).join("objects/pack").join(file)).map(|mut res| {
+                if file.ends_with(".pack") {
+                    res.set_mut(Header(ContentType(Mime(
+                        TopLevel::Application,
+                        SubLevel::Ext("x-git-packed-objects".to_string()),
+                        Vec::new(),
+                    ))));
+                }
+                if file.ends_with(".idx") {
+                    res.set_mut(Header(ContentType(Mime(
+                        TopLevel::Application,
+                        SubLevel::Ext("x-git-packed-objects-toc".to_string()),
+                        Vec::new(),
+                    ))));
+                }
+                res
+            })
+        },
+        "pack",
+    );
+
+    let handler = LoggerMiddleware::new(router, logger, DefaultLogFormatter);
+    Iron::new(handler).http("0.0.0.0:3000").unwrap();
 }
