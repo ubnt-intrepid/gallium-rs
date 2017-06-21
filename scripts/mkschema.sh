@@ -5,7 +5,7 @@ script_dir="$(cd $(dirname $BASH_SOURCE); pwd)"
 dst="$script_dir/../src/schema.rs"
 
 echo "[Generating schema...]"
-schema="$(docker-compose run --rm dev diesel print-schema)"
+schema="$($script_dir/docker-run.sh diesel print-schema)"
 
 echo "[Writing schema to schema.rs...]"
 
