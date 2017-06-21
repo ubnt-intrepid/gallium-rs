@@ -18,4 +18,5 @@ VOLUME [ "/source", "/opt/gallium" ]
 
 WORKDIR /source
 
-CMD [ "/bin/bash" ]
+ADD docker_entrypoint.sh /docker_entrypoint.sh
+CMD [ "/docker_entrypoint.sh" ]

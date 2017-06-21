@@ -29,4 +29,5 @@ services:
     env_file: .env
     volumes:
       - ".:/source"
+      - "./data/cargo_registry:/root/.cargo/registry"
       - "./data/gallium:/opt/gallium"
