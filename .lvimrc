@@ -1,6 +1,0 @@
-" To enable local vimrc, use 'embear/vim-localvimrc'
-
-augroup rust_config
-  autocmd!
-  autocmd FileType rust setlocal makeprg=./scripts/cargo.sh
-augroup END
