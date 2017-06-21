@@ -6,8 +6,6 @@ services:
     ports:
       - "48895:22"
     volumes:
-      - "./bin:/opt/gallium/bin"
-      - "./.env:/opt/gallium/.env"
       - "./data/gallium:/data"
     links:
       - "db"
