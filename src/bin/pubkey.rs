@@ -20,7 +20,8 @@ fn build_cli<'a, 'b: 'a>() -> clap::App<'a, 'b> {
         .subcommand(
             clap::SubCommand::with_name("register")
                 .about("Register new public key to database")
-                .arg_from_usage("[filename] 'Path of target pubkey'"),
+                .arg_from_usage("--user-id=<user-id>    'User ID'")
+                .arg_from_usage("[filename]             'Path of target pubkey'"),
         )
         .subcommand(
             clap::SubCommand::with_name("show")
@@ -46,6 +47,8 @@ fn register(m: &clap::ArgMatches) {
     dotenv().ok();
     let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
 
+    let user_id: i32 = m.value_of("user-id").and_then(|s| s.parse().ok()).unwrap();
+
     let filename = m.value_of("filename").unwrap_or("-");
     let mut f: Box<Read> = if filename == "-" {
         Box::new(io::stdin())
@@ -54,9 +57,9 @@ fn register(m: &clap::ArgMatches) {
     };
     let mut pubkey = Vec::new();
     io::copy(&mut f, &mut pubkey).unwrap();
-    let pubkey = String::from_utf8_lossy(&pubkey).trim().to_owned();
+    let key = &String::from_utf8_lossy(&pubkey).trim().to_owned();
 
-    let new_pubkey = NewPublicKey { key: &pubkey };
+    let new_pubkey = NewPublicKey { user_id, key };
     let pub_key: PublicKey = diesel::insert(&new_pubkey)
         .into(public_keys::table)
         .get_result(&conn)

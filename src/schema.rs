@@ -5,5 +5,16 @@ table! {
         id -> Int4,
         created_at -> Timestamp,
         key -> Text,
+        user_id -> Int4,
+    }
+}
+
+table! {
+    users (id) {
+        id -> Int4,
+        username -> Text,
+        email_address -> Text,
+        bcrypt_hash -> Text,
+        created_at -> Timestamp,
     }
 }
