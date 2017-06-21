@@ -7,7 +7,8 @@ services:
       - "3000:80"
       - "48895:22"
     volumes:
-      - "./data/gallium:/data"
+      - "./data/gallium:/opt/gallium"
+      - "./data/repositories:/data"
       - "./data/log/nginx:/var/log/nginx"
     links:
       - "db"
@@ -19,3 +20,13 @@ services:
       - "5432:5432"
     volumes:
       - "./data/db:/var/lib/postgresql/data"
+
+  dev:
+    build: ./docker/dev
+    image: ubntintrepid/gallium-dev:latest
+    links:
+      - "db"
+    env_file: .env
+    volumes:
+      - ".:/source"
+      - "./data/gallium:/opt/gallium"
