@@ -29,10 +29,19 @@ impl error::Error for CustomError {
 }
 
 
-fn repo_path(req: &Request) -> PathBuf {
+fn repo_route(path: &str) -> String {
+    format!("/:user/:repository{}", path)
+}
+
+fn get_repository_path(req: &Request) -> IronResult<PathBuf> {
     let route = req.extensions.get::<Router>().unwrap();
-    let project = route.find("project").unwrap();
-    Path::new("/data").join(project)
+    let user = route.find("user").unwrap();
+    let repository = route.find("repository").unwrap();
+    let repo_path = Path::new("/data").join(user).join(repository);
+    if !repo_path.is_dir() {
+        return Err(IronError::new(CustomError, status::NotFound));
+    }
+    Ok(repo_path)
 }
 
 fn handle_staticfile<P: AsRef<Path>>(path: P, content_type: Option<Mime>) -> IronResult<Response> {
@@ -121,7 +130,7 @@ fn packet_write(data: &str) -> String {
 
 fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
-    let repo_path = repo_path(req);
+    let repo_path = get_repository_path(req)?;
 
     let refs = git_command(service, repo_path)?;
     let mut body = packet_write(&format!("# service=git-{}\n", service));
@@ -141,7 +150,7 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
 }
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
-    let repo_path = repo_path(req);
+    let repo_path = get_repository_path(req)?;
 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
@@ -190,77 +199,108 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
 }
 
 fn register_dump_handlers(router: &mut Router) {
-    router.get(
-        "/:project/HEAD",
-        |req: &mut Request| handle_staticfile(repo_path(req).join("HEAD"), None),
-        "head",
-    ).get(
-        "/:project/objects/info/alternates",
-        |req: &mut Request| handle_staticfile(repo_path(req).join("objects/info/alternates"), None),
-        "alternates",
-    ).get(
-        "/:project/objects/info/http-alternates",
-        |req: &mut Request| handle_staticfile(repo_path(req).join("objects/info/http-alternates"), None),
-        "http-alternates",
-    ).get(
-        "/:project/objects/info/packs",
-        |req: &mut Request| handle_staticfile(repo_path(req).join("objects/info/packs"), None),
-        "info-packs",
-    ).get(
-        "/:project/objects/info/:file",
-        |req: &mut Request| {
-            let route = req.extensions.get::<Router>().unwrap();
-            let file = route.find("file").unwrap();
-            handle_staticfile(repo_path(req).join("objects/info").join(file), None)
-        },
-        "info-files",
-    ).get(
-        "/:project/objects/:prefix/:suffix",
-        |req: &mut Request| {
-            let route = req.extensions.get::<Router>().unwrap();
-            let prefix = route.find("prefix").unwrap();
-            let suffix = route.find("suffix").unwrap();
-            handle_staticfile(repo_path(req).join("objects").join(prefix).join(suffix),
+    router
+        .get(
+            repo_route("/HEAD"),
+            |req: &mut Request| handle_staticfile(get_repository_path(req)?.join("HEAD"), None),
+            "head",
+        )
+        .get(
+            repo_route("/objects/info/alternates"),
+            |req: &mut Request| {
+                handle_staticfile(
+                    get_repository_path(req)?.join("objects/info/alternates"),
+                    None,
+                )
+            },
+            "alternates",
+        )
+        .get(
+            repo_route("/objects/info/http-alternates"),
+            |req: &mut Request| {
+                handle_staticfile(
+                    get_repository_path(req)?.join(
+                        "objects/info/http-alternates",
+                    ),
+                    None,
+                )
+            },
+            "http-alternates",
+        )
+        .get(
+            repo_route("/objects/info/packs"),
+            |req: &mut Request| {
+                handle_staticfile(get_repository_path(req)?.join("objects/info/packs"), None)
+            },
+            "info-packs",
+        )
+        .get(
+            repo_route("/objects/info/:file"),
+            |req: &mut Request| {
+                let route = req.extensions.get::<Router>().unwrap();
+                let file = route.find("file").unwrap();
+                handle_staticfile(
+                    get_repository_path(req)?.join("objects/info").join(file),
+                    None,
+                )
+            },
+            "info-files",
+        )
+        .get(
+            repo_route("/:prefix/:suffix"),
+            |req: &mut Request| {
+                let route = req.extensions.get::<Router>().unwrap();
+                let prefix = route.find("prefix").unwrap();
+                let suffix = route.find("suffix").unwrap();
+                handle_staticfile(
+                    get_repository_path(req)?
+                        .join("objects")
+                        .join(prefix)
+                        .join(suffix),
                     Some(Mime(
                         TopLevel::Application,
                         SubLevel::Ext("x-git-loose-object".to_string()),
                         Vec::new(),
-                    )))
-        },
-        "object",
-    ).get(
-        "/:project/objects/pack/:file",
-        |req: &mut Request| {
-            let route = req.extensions.get::<Router>().unwrap();
-            let file = route.find("file").unwrap();
-            let content_type = if file.ends_with(".pack") {
-                "x-git-packed-objects".to_string()
-            } else if file.ends_with(".idx") {
-                "x-git-packed-objects-toc".to_string()
-            } else {
-                return Err(IronError::new(CustomError, status::NotFound));
-            };
-            handle_staticfile(repo_path(req).join("objects/pack").join(file),
+                    )),
+                )
+            },
+            "object",
+        )
+        .get(
+            repo_route("/objects/pack/:file"),
+            |req: &mut Request| {
+                let route = req.extensions.get::<Router>().unwrap();
+                let file = route.find("file").unwrap();
+                let content_type = if file.ends_with(".pack") {
+                    "x-git-packed-objects".to_string()
+                } else if file.ends_with(".idx") {
+                    "x-git-packed-objects-toc".to_string()
+                } else {
+                    return Err(IronError::new(CustomError, status::NotFound));
+                };
+                handle_staticfile(
+                    get_repository_path(req)?.join("objects/pack").join(file),
                     Some(Mime(
                         TopLevel::Application,
                         SubLevel::Ext(content_type),
                         Vec::new(),
-                    )))
-        },
-        "pack",
-    );
+                    )),
+                )
+            },
+            "pack",
+        );
 }
 
 fn register_smart_handlers(router: &mut Router) {
     router
-        .get("/:project/info/refs", handle_info_refs, "info_refs")
+        .get(repo_route("/info/refs"), handle_info_refs, "info_refs")
         .post(
-            "/:project/git-receive-pack",
+            repo_route("/git-receive-pack"),
             |req: &mut Request| handle_service_rpc(req, "receive-pack"),
             "receive-pack",
         )
         .post(
-            "/:project/git-upload-pack",
+            repo_route("/git-upload-pack"),
             |req: &mut Request| handle_service_rpc(req, "upload-pack"),
             "upload-pack",
         );
