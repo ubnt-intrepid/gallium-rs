@@ -1,4 +1,4 @@
-use super::schema::{users, public_keys};
+use super::schema::{users, public_keys, projects};
 use chrono::NaiveDateTime;
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
@@ -42,6 +42,7 @@ impl From<PublicKey> for EncodablePublicKey {
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[has_many(public_keys)]
+#[has_many(projects)]
 pub struct User {
     pub id: i32,
     pub username: String,
@@ -75,4 +76,23 @@ impl From<User> for EncodableUser {
             created_at: val.created_at.format("%c").to_string(),
         }
     }
+}
+
+
+#[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
+#[belongs_to(User)]
+pub struct Project {
+    pub id: i32,
+    pub created_at: NaiveDateTime,
+    pub user_id: i32,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Insertable)]
+#[table_name = "projects"]
+pub struct NewProject<'a> {
+    pub user_id: i32,
+    pub name: &'a str,
+    pub description: &'a str,
 }
