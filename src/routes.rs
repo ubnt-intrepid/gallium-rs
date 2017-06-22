@@ -1,4 +1,3 @@
-use std::env;
 use std::error;
 use std::fmt;
 use std::io::{self, Read};
@@ -11,10 +10,9 @@ use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
 use mount::Mount;
 use router::Router;
-use bodyparser::Struct;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
-use serde_json;
+use super::api;
 
 #[derive(Debug)]
 struct CustomError;
@@ -169,102 +167,6 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
     )))
 }
 
-
-
-#[derive(Serialize)]
-struct SerdePublicKey {
-    id: i32,
-    created_at: String,
-    title: String,
-    key: String,
-}
-
-impl From<super::models::PublicKey> for SerdePublicKey {
-    fn from(val: super::models::PublicKey) -> SerdePublicKey {
-        SerdePublicKey {
-            id: val.id,
-            created_at: val.created_at.format("%c").to_string(),
-            title: val.title,
-            key: val.key,
-        }
-    }
-}
-
-fn handle_get_ssh_keys(_req: &mut Request) -> IronResult<Response> {
-    use diesel::prelude::*;
-    use diesel::pg::PgConnection;
-    use super::models::PublicKey;
-    use super::schema::public_keys;
-
-    let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
-    let keys: Vec<SerdePublicKey> = public_keys::table
-        .load::<PublicKey>(&conn)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .into_iter()
-        .map(Into::into)
-        .collect();
-
-    Ok(Response::with((
-        status::Ok,
-        Header(ContentType::json()),
-        serde_json::to_string_pretty(&keys).unwrap(),
-    )))
-}
-
-fn handle_add_ssh_key(req: &mut Request) -> IronResult<Response> {
-    #[derive(Clone, Deserialize)]
-    struct Params {
-        user_id: i32,
-        title: String,
-        key: String,
-    }
-    let params = req.get::<Struct<Params>>()
-        .ok()
-        .and_then(|s| s)
-        .ok_or_else(|| {
-            IronError::new(CustomError, (
-                status::BadRequest,
-                Header(ContentType::json()),
-                serde_json::to_string_pretty(&json!({
-                    "message": "Failed to parse parameter as JSON",
-                })).unwrap(),
-            ))
-        })?;
-
-    use diesel::insert;
-    use diesel::prelude::*;
-    use diesel::pg::PgConnection;
-    use super::schema::public_keys;
-    use super::models::{PublicKey, NewPublicKey};
-
-    let new_key = NewPublicKey {
-        user_id: params.user_id,
-        title: &params.title,
-        key: &params.key,
-    };
-    let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
-    let inserted_key: SerdePublicKey = insert(&new_key)
-        .into(public_keys::table)
-        .get_result::<PublicKey>(&conn)
-        .map(Into::into)
-        .map_err(|err| {
-            let err_message = format!("Failed to insert requested key: {}", err);
-            IronError::new(err, (
-                status::InternalServerError,
-                Header(ContentType::json()),
-                serde_json::to_string_pretty(&json!({
-                    "message": err_message,
-                })).unwrap(),
-            ))
-        })?;
-
-    Ok(Response::with((
-        status::Created,
-        Header(ContentType::json()),
-        serde_json::to_string_pretty(&inserted_key).unwrap(),
-    )))
-}
-
 pub fn create_handler() -> Mount {
     let mut router = Router::new();
     router.get(repo_route("/info/refs"), handle_info_refs, "info_refs");
@@ -279,9 +181,7 @@ pub fn create_handler() -> Mount {
         "upload-pack",
     );
 
-    let mut api_router = Router::new();
-    api_router.get("/user/keys", handle_get_ssh_keys, "get_ssh_keys");
-    api_router.post("/user/keys", handle_add_ssh_key, "add_ssh_key");
+    let api_router = api::create_api_handler();
 
     let mut mount = Mount::new();
     mount.mount("/", router);
