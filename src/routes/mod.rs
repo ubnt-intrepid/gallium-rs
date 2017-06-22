@@ -2,8 +2,9 @@ mod api;
 mod git;
 
 use mount::Mount;
+use config::Config;
 
-pub fn create_handler() -> Mount {
+pub fn create_handler(_config: Config) -> Mount {
     let git_router = git::create_git_handler();
     let api_router = api::create_api_handler();
 
