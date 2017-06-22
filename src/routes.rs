@@ -93,49 +93,38 @@ fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
     }
 }
 
-fn git_command<P: AsRef<Path>>(service: &str, wd: P) -> IronResult<String> {
-    Command::new("/usr/bin/git")
-        .args(&[service, "--stateless-rpc", "--advertise-refs", "."])
-        .current_dir(wd)
-        .output()
-        .map_err(|err| {
-            let message = format!("failed to exec git: {}", err.to_string());
-            IronError::new(err, (status::InternalServerError, message))
-        })
-        .and_then(|output| if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-        } else {
-            Err(IronError::new(CustomError, (
-                status::InternalServerError,
-                format!(
-                    "git failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            )))
-        })
-}
-
-fn packet_write(data: &str) -> String {
-    let mut s = format!("{:x}", data.len() + 4);
-    if s.len() % 4 != 0 {
-        let mut b = String::new();
-        for _ in 0..(4 - s.len() % 4) {
-            b.push('0');
-        }
-        s = b + &s;
+fn packet_write(data: &str) -> Vec<u8> {
+    let s = format!("{:x}", data.len() + 4);
+    if s.len() % 4 == 0 {
+        return (s + data).as_bytes().into();
     }
-    s += data;
-    s
+
+    let mut ret = Vec::new();
+    for _ in 0..(4 - s.len() % 4) {
+        ret.push(b'0');
+    }
+    ret.extend(s.as_bytes());
+    ret.extend(data.as_bytes());
+    ret
 }
 
 fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
     let repo_path = get_repository_path(req)?;
 
-    let refs = git_command(service, repo_path)?;
     let mut body = packet_write(&format!("# service=git-{}\n", service));
-    body += "0000";
-    body += &refs;
+    body.extend(b"0000");
+    let refs = Command::new("/usr/bin/git")
+        .args(&[service, "--stateless-rpc", "--advertise-refs", "."])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|err| IronError::new(err, status::InternalServerError))
+        .and_then(|output| if output.status.success() {
+            Ok(output.stdout)
+        } else {
+            Err(IronError::new(CustomError, status::InternalServerError))
+        })?;
+    body.extend(refs);
 
     Ok(Response::with((
         status::Ok,
@@ -184,8 +173,13 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         .and_then(|mut child| {
             io::copy(&mut body_reader, child.stdin.as_mut().unwrap()).map(|_| child)
         })
-        .and_then(|child| child.wait_with_output().map(|o| o.stdout))
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+        .and_then(|child| child.wait_with_output())
+        .map_err(|err| IronError::new(err, status::InternalServerError))
+        .and_then(|output| if output.status.success() {
+            Ok(output.stdout)
+        } else {
+            Err(IronError::new(CustomError, status::InternalServerError))
+        })?;
 
     Ok(Response::with((
         status::Ok,
