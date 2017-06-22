@@ -30,10 +30,9 @@ StrictModes yes
 
 RSAAuthentication yes
 PubkeyAuthentication yes
-#AuthorizedKeysFile	%h/.ssh/authorized_keys
 
-AuthorizedKeysCommand     /usr/local/bin/show_authorized_keys.sh
-AuthorizedKeysCommandUser git
+AllowUsers          git
+AuthorizedKeysFile	/home/.git/.ssh/authorized_keys
 
 # Don't read the user's ~/.rhosts and ~/.shosts files
 IgnoreRhosts yes
