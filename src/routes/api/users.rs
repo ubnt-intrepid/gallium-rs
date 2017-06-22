@@ -1,4 +1,3 @@
-use std::env;
 use iron::prelude::*;
 use iron::status;
 use bodyparser::Struct;
@@ -8,9 +7,11 @@ use super::ApiError;
 
 use diesel::insert;
 use diesel::prelude::*;
-use diesel::pg::PgConnection;
 use models::{User, NewUser, EncodableUser};
 use schema::users;
+
+use app::App;
+
 
 pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]
@@ -46,10 +47,19 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
         email_address: &params.email_address,
         bcrypt_hash: &bcrypt_hash,
     };
-    let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
+
+    let app = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, (
+            status::InternalServerError,
+            JsonResponse::json(json!({
+                "message": "Failed to retrieve pooled DB connection",
+            })),
+        ))
+    })?;
     let inserted_user: EncodableUser = insert(&new_user)
         .into(users::table)
-        .get_result::<User>(&conn)
+        .get_result::<User>(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into();
 

@@ -16,6 +16,8 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate iron_json_response;
 extern crate bcrypt;
+extern crate r2d2;
+extern crate r2d2_diesel;
 
 pub mod app;
 pub mod config;

@@ -1,19 +1,26 @@
-use std::env;
 use iron::prelude::*;
 use iron::status;
 use bodyparser::Struct;
 use iron_json_response::JsonResponse;
 use diesel::insert;
 use diesel::prelude::*;
-use diesel::pg::PgConnection;
 use schema::public_keys;
 use models::{PublicKey, NewPublicKey, EncodablePublicKey};
 use super::ApiError;
+use app::App;
 
-pub(super) fn handle_get_ssh_keys(_req: &mut Request) -> IronResult<Response> {
-    let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
+pub(super) fn handle_get_ssh_keys(req: &mut Request) -> IronResult<Response> {
+    let app = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, (
+            status::InternalServerError,
+            JsonResponse::json(json!({
+                "message": "Failed to retrieve pooled DB connection",
+            })),
+        ))
+    })?;
     let keys: Vec<EncodablePublicKey> = public_keys::table
-        .load::<PublicKey>(&conn)
+        .load::<PublicKey>(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
         .map(Into::into)
@@ -46,10 +53,19 @@ pub(super) fn handle_add_ssh_key(req: &mut Request) -> IronResult<Response> {
         title: &params.title,
         key: &params.key,
     };
-    let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
+
+    let app = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, (
+            status::InternalServerError,
+            JsonResponse::json(json!({
+                "message": "Failed to retrieve pooled DB connection",
+            })),
+        ))
+    })?;
     let inserted_key: EncodablePublicKey = insert(&new_key)
         .into(public_keys::table)
-        .get_result::<PublicKey>(&conn)
+        .get_result::<PublicKey>(&*conn)
         .map(Into::into)
         .map_err(|err| {
             let err_message = format!("Failed to insert requested key: {}", err);
