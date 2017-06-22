@@ -15,6 +15,7 @@ extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 extern crate iron_json_response;
+extern crate bcrypt;
 
 pub mod models;
 pub mod schema;

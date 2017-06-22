@@ -1,4 +1,5 @@
 mod keys;
+mod users;
 
 use std::error;
 use std::fmt;
@@ -27,6 +28,7 @@ pub fn create_api_handler() -> Chain {
     let mut router = Router::new();
     router.get("/user/keys", keys::handle_get_ssh_keys, "get_ssh_keys");
     router.post("/user/keys", keys::handle_add_ssh_key, "add_ssh_key");
+    router.post("/users", users::create_user, "create_user");
 
     let mut chain = Chain::new(router);
     chain.link_after(JsonResponseMiddleware::new());
