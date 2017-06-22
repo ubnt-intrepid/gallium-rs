@@ -8,6 +8,7 @@ pub struct PublicKey {
     pub created_at: NaiveDateTime,
     pub key: String,
     pub user_id: i32,
+    pub title: String,
 }
 
 #[derive(Insertable)]
@@ -15,6 +16,7 @@ pub struct PublicKey {
 pub struct NewPublicKey<'a> {
     pub key: &'a str,
     pub user_id: i32,
+    pub title: &'a str,
 }
 
 

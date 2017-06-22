@@ -6,6 +6,7 @@ table! {
         created_at -> Timestamp,
         key -> Text,
         user_id -> Int4,
+        title -> Text,
     }
 }
 
