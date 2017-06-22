@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use iron::prelude::*;
 use iron::status;
@@ -11,6 +11,8 @@ use iron::modifiers::Header;
 use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
+use app::App;
+
 
 #[derive(Debug)]
 struct CustomError;
@@ -36,10 +38,14 @@ fn get_repository_path(req: &Request) -> IronResult<PathBuf> {
     let route = req.extensions.get::<Router>().unwrap();
     let user = route.find("user").unwrap();
     let repository = route.find("repository").unwrap();
-    let repo_path = Path::new("/data").join(user).join(repository);
+
+    let app = req.extensions.get::<App>().unwrap();
+    // TODO: get repository path from DB
+    let repo_path = app.config().repository_root.join(user).join(repository);
     if !repo_path.is_dir() {
         return Err(IronError::new(CustomError, status::NotFound));
     }
+
     Ok(repo_path)
 }
 

@@ -7,7 +7,7 @@ use r2d2_diesel::ConnectionManager;
 use diesel::pg::PgConnection;
 
 pub struct App {
-    _config: Config,
+    config: Config,
     db_pool: Pool<ConnectionManager<PgConnection>>,
 }
 
@@ -15,10 +15,11 @@ impl App {
     pub fn new(config: Config) -> Result<Self, InitializationError> {
         let manager = ConnectionManager::new(config.database_url.as_str());
         let db_pool = Pool::new(Default::default(), manager)?;
-        Ok(App {
-            _config: config,
-            db_pool,
-        })
+        Ok(App { config, db_pool })
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn get_db_conn(
