@@ -28,11 +28,14 @@ LoginGraceTime 120
 PermitRootLogin prohibit-password
 StrictModes yes
 
+AllowUsers git
+
 RSAAuthentication yes
 PubkeyAuthentication yes
+#AuthorizedKeysFile	%h/.ssh/authorized_keys
 
-AllowUsers          git
-AuthorizedKeysFile	/home/.git/.ssh/authorized_keys
+AuthorizedKeysCommand     /usr/local/bin/show_authorized_keys.sh
+AuthorizedKeysCommandUser git
 
 # Don't read the user's ~/.rhosts and ~/.shosts files
 IgnoreRhosts yes

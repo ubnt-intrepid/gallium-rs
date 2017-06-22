@@ -13,6 +13,11 @@ name = "server"
 path = "src/bin/server.rs"
 doc = false
 
+[[bin]]
+name = "pubkey"
+path = "src/bin/pubkey.rs"
+doc = false
+
 [dependencies]
 clap = "~2.24"
 diesel = { version = "~0.13", features = ["postgres","chrono"] }
