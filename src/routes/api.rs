@@ -8,6 +8,7 @@ use iron::modifiers::Header;
 use router::Router;
 use bodyparser::Struct;
 use serde_json;
+use models::EncodablePublicKey;
 
 #[derive(Debug)]
 pub struct ApiError;
@@ -25,33 +26,14 @@ impl error::Error for ApiError {
 }
 
 
-#[derive(Serialize)]
-struct SerdePublicKey {
-    id: i32,
-    created_at: String,
-    title: String,
-    key: String,
-}
-
-impl From<super::models::PublicKey> for SerdePublicKey {
-    fn from(val: super::models::PublicKey) -> SerdePublicKey {
-        SerdePublicKey {
-            id: val.id,
-            created_at: val.created_at.format("%c").to_string(),
-            title: val.title,
-            key: val.key,
-        }
-    }
-}
-
 fn handle_get_ssh_keys(_req: &mut Request) -> IronResult<Response> {
     use diesel::prelude::*;
     use diesel::pg::PgConnection;
-    use super::models::PublicKey;
-    use super::schema::public_keys;
+    use models::PublicKey;
+    use schema::public_keys;
 
     let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
-    let keys: Vec<SerdePublicKey> = public_keys::table
+    let keys: Vec<EncodablePublicKey> = public_keys::table
         .load::<PublicKey>(&conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
@@ -88,8 +70,8 @@ fn handle_add_ssh_key(req: &mut Request) -> IronResult<Response> {
     use diesel::insert;
     use diesel::prelude::*;
     use diesel::pg::PgConnection;
-    use super::schema::public_keys;
-    use super::models::{PublicKey, NewPublicKey};
+    use schema::public_keys;
+    use models::{PublicKey, NewPublicKey};
 
     let new_key = NewPublicKey {
         user_id: params.user_id,
@@ -97,7 +79,7 @@ fn handle_add_ssh_key(req: &mut Request) -> IronResult<Response> {
         key: &params.key,
     };
     let conn = PgConnection::establish(&env::var("DATABASE_URL").unwrap()).unwrap();
-    let inserted_key: SerdePublicKey = insert(&new_key)
+    let inserted_key: EncodablePublicKey = insert(&new_key)
         .into(public_keys::table)
         .get_result::<PublicKey>(&conn)
         .map(Into::into)
@@ -120,9 +102,9 @@ fn handle_add_ssh_key(req: &mut Request) -> IronResult<Response> {
 }
 
 pub fn create_api_handler() -> Router {
-    let mut api_router = Router::new();
-    api_router.get("/user/keys", handle_get_ssh_keys, "get_ssh_keys");
-    api_router.post("/user/keys", handle_add_ssh_key, "add_ssh_key");
+    let mut router = Router::new();
+    router.get("/user/keys", handle_get_ssh_keys, "get_ssh_keys");
+    router.post("/user/keys", handle_add_ssh_key, "add_ssh_key");
 
-    api_router
+    router
 }

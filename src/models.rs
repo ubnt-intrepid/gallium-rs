@@ -19,6 +19,26 @@ pub struct NewPublicKey<'a> {
     pub title: &'a str,
 }
 
+#[derive(Serialize)]
+pub struct EncodablePublicKey {
+    id: i32,
+    created_at: String,
+    title: String,
+    key: String,
+}
+
+impl From<PublicKey> for EncodablePublicKey {
+    fn from(val: PublicKey) -> Self {
+        EncodablePublicKey {
+            id: val.id,
+            created_at: val.created_at.format("%c").to_string(),
+            title: val.title,
+            key: val.key,
+        }
+    }
+}
+
+
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[has_many(public_keys)]

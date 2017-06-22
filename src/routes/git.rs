@@ -8,11 +8,9 @@ use iron::status;
 use iron::headers::{CacheControl, CacheDirective, Encoding, ContentEncoding, ContentType};
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
-use mount::Mount;
 use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
-use super::api;
 
 #[derive(Debug)]
 struct CustomError;
@@ -167,7 +165,7 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
     )))
 }
 
-pub fn create_handler() -> Mount {
+pub fn create_git_handler() -> Router {
     let mut router = Router::new();
     router.get(repo_route("/info/refs"), handle_info_refs, "info_refs");
     router.post(
@@ -181,11 +179,5 @@ pub fn create_handler() -> Mount {
         "upload-pack",
     );
 
-    let api_router = api::create_api_handler();
-
-    let mut mount = Mount::new();
-    mount.mount("/", router);
-    mount.mount("/api/v1", api_router);
-
-    mount
+    router
 }
