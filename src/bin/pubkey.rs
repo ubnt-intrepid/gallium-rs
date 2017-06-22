@@ -68,6 +68,6 @@ fn show(m: &clap::ArgMatches) {
     let conn = PgConnection::establish(&database_url).unwrap();
     let keys: Vec<PublicKey> = public_keys::table.load(&conn).unwrap();
     for key in keys {
-        println!("command=\"/opt/gallium/bin/pubkey access\" {}", key.key);
+        println!("{}", key.key);
     }
 }
