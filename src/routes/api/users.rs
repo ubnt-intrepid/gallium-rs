@@ -9,27 +9,8 @@ use super::ApiError;
 use diesel::insert;
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
-use models::{User, NewUser};
+use models::{User, NewUser, EncodableUser};
 use schema::users;
-
-#[derive(Serialize)]
-struct EncodableUser {
-    id: i32,
-    username: String,
-    email_address: String,
-    created_at: String,
-}
-
-impl From<User> for EncodableUser {
-    fn from(val: User) -> Self {
-        EncodableUser {
-            id: val.id,
-            username: val.username,
-            email_address: val.email_address,
-            created_at: val.created_at.format("%c").to_string(),
-        }
-    }
-}
 
 pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]

@@ -17,6 +17,8 @@ extern crate serde_json;
 extern crate iron_json_response;
 extern crate bcrypt;
 
+pub mod app;
+pub mod config;
 pub mod models;
 pub mod schema;
 pub mod routes;

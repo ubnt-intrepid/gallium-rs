@@ -57,3 +57,22 @@ pub struct NewUser<'a> {
     pub email_address: &'a str,
     pub bcrypt_hash: &'a str,
 }
+
+#[derive(Serialize)]
+pub struct EncodableUser {
+    id: i32,
+    username: String,
+    email_address: String,
+    created_at: String,
+}
+
+impl From<User> for EncodableUser {
+    fn from(val: User) -> Self {
+        EncodableUser {
+            id: val.id,
+            username: val.username,
+            email_address: val.email_address,
+            created_at: val.created_at.format("%c").to_string(),
+        }
+    }
+}
