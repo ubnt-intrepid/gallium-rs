@@ -9,9 +9,9 @@ use diesel::insert;
 use diesel::prelude::*;
 use models::{Project, NewProject, EncodableProject};
 use schema::{users, projects};
-use std::fs;
 use std::io;
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::process::Command;
 use std::os::unix::process::CommandExt;
 use users::get_user_by_name;
 
@@ -103,66 +103,59 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
         })?;
 
     let repo_path = app.generate_repository_path(&params.user, &params.project);
-    fs::create_dir_all(&repo_path).map_err(|err| {
+    create_repository(&repo_path).map_err(|err| {
         IronError::new(err, (
             status::InternalServerError,
             JsonResponse::json(json!({
-                "message": "failed to create reposity directory",
+                "message": "failed to create Git repository",
             })),
         ))
     })?;
+
+    Ok(Response::with(
+        (status::Created, JsonResponse::json(inserted_project)),
+    ))
+}
+
+fn create_repository<P: AsRef<Path>>(repo_path: P) -> io::Result<()> {
+    let repo_path_str = repo_path.as_ref().to_str().unwrap();
+
+    // Get uid/gid
+    let user = get_user_by_name("git").unwrap();
+    let uid = user.uid();
+    let gid = user.primary_group_id();
+
+    // Create destination directory of repository.
     // TODO: use libc
-    Command::new("/bin/chown")
-        .args(&["-R", "git:git", repo_path.to_str().unwrap()])
+    Command::new("/bin/mkdir")
+        .args(&["-p", repo_path_str])
+        .uid(uid)
+        .gid(gid)
         .spawn()
         .and_then(|mut ch| ch.wait())
         .and_then(|st| if st.success() {
             Ok(())
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, ""))
-        })
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                    "message": "cannot change owner of repository",
-                })),
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "cannot change owner of repository",
             ))
         })?;
 
-    let u = get_user_by_name("git").unwrap();
-    let uid = u.uid();
-    let gid = u.primary_group_id();
-    let output = Command::new("/usr/bin/git")
-        .args(&["init", "--bare", repo_path.to_str().unwrap()])
+    // Initialize git repository
+    Command::new("/usr/bin/git")
+        .args(&["init", "--bare", repo_path_str])
         .current_dir(&repo_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .uid(uid)
         .gid(gid)
         .spawn()
-        .and_then(|ch| ch.wait_with_output())
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                    "message": "failed to execute git init"
-                })),
+        .and_then(|mut ch| ch.wait())
+        .and_then(|status| if status.success() {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "`git init` exited with non-zero status",
             ))
-        })?;
-    if !output.status.success() {
-        return Err(IronError::new(ApiError, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "message": "`git init` is exited with non-zero status",
-                "stdout": String::from_utf8_lossy(&output.stdout).into_owned(),
-                "stderr": String::from_utf8_lossy(&output.stderr).into_owned(),
-            })),
-        )));
-    }
-
-    Ok(Response::with(
-        (status::Created, JsonResponse::json(inserted_project)),
-    ))
+        })
 }
