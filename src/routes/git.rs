@@ -31,20 +31,18 @@ impl error::Error for CustomError {
 
 
 fn repo_route(path: &str) -> String {
-    format!("/:user/:repository{}", path)
+    format!("/:user/:project{}", path)
 }
 
 fn get_repository_path(req: &Request) -> IronResult<PathBuf> {
     let route = req.extensions.get::<Router>().unwrap();
     let user = route.find("user").unwrap();
-    let repository = route.find("repository").unwrap();
+    let project = route.find("project").unwrap();
 
     let app = req.extensions.get::<App>().unwrap();
-    app.resolve_repository_path(user, repository).map_err(
-        |err| {
-            IronError::new(err, status::NotFound)
-        },
-    )
+    app.resolve_repository_path(user, project).map_err(|err| {
+        IronError::new(err, status::NotFound)
+    })
 }
 
 fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
