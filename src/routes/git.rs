@@ -40,13 +40,11 @@ fn get_repository_path(req: &Request) -> IronResult<PathBuf> {
     let repository = route.find("repository").unwrap();
 
     let app = req.extensions.get::<App>().unwrap();
-    // TODO: get repository path from DB
-    let repo_path = app.config().repository_root.join(user).join(repository);
-    if !repo_path.is_dir() {
-        return Err(IronError::new(CustomError, status::NotFound));
-    }
-
-    Ok(repo_path)
+    app.resolve_repository_path(user, repository).map_err(
+        |err| {
+            IronError::new(err, status::NotFound)
+        },
+    )
 }
 
 fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
