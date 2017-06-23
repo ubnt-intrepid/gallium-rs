@@ -21,6 +21,7 @@ dependencies = [
  "serde_json 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "shlex 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "urlencoded 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "users 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -729,6 +730,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "users"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "libc 0.2.24 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "utf8-ranges"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -848,6 +857,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum unsafe-any 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f30360d7979f5e9c6e6cea48af192ea8fab4afb3cf72597154b8f08935bc9c7f"
 "checksum url 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a69a2e36a5e5ed3f3063c8c64a3b028c4d50d689fa6c862abd7cfe65f882595c"
 "checksum urlencoded 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8c28708636d6f7298a53b1cdb6af40f1ab523209a7cb83cf4d41b3ebc671d319"
+"checksum users 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "a7ae8fdf783cb9652109c99886459648feb92ecc749e6b8e7930f6decba74c7c"
 "checksum utf8-ranges 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "662fab6525a98beff2921d7f61a39e7d59e0b425ebc7d0d9e66d316e55124122"
 "checksum vec_map 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "887b5b631c2ad01628bbbaa7dd4c869f80d3186688f8d0b6f58774fbe324988c"
 "checksum version_check 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "2bb3950bf29e36796dea723df1747619dd331881aefef75b7cf1c58fdd738afe"
