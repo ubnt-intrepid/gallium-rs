@@ -15,6 +15,7 @@ RUN mkdir -p /var/run/sshd
 RUN useradd -ms /bin/bash git
 RUN echo 'git:git' | chpasswd
 
+COPY docker_entrypoint.sh /docker_entrypoint.sh
 COPY bin/* /usr/local/bin/
 
 COPY conf/nginx.conf        /etc/nginx/nginx.conf
@@ -24,4 +25,4 @@ COPY conf/supervisord.conf  /etc/supervisord.conf
 EXPOSE 22 80
 VOLUME [ "/data" ]
 
-CMD [ "/usr/bin/supervisord", "-c", "/etc/supervisord.conf" ]
+CMD [ "/docker_entrypoint.sh" ]
