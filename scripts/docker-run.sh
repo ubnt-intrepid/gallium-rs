@@ -13,5 +13,4 @@ fi
 container_id="$(docker-compose ps -q dev)"
 script_root="$(cd $(dirname $BASH_SOURCE); pwd)"
 
-sudo rsync -C --filter=":- .dockerignore" -acz --delete "$script_root/.." "$script_root/../data/source"
 docker exec -it "$container_id" "$1" "${@:2}"
