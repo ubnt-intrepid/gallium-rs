@@ -42,9 +42,13 @@ impl App {
         self.db_pool.get()
     }
 
+    pub fn generate_repository_path(&self, user: &str, project: &str) -> PathBuf {
+        self.config.repository_root.join(user).join(project)
+    }
+
     pub fn resolve_repository_path(&self, user: &str, project: &str) -> Result<PathBuf, AppError> {
         // TODO: get repository path from DB
-        let repo_path = self.config.repository_root.join(user).join(project);
+        let repo_path = self.generate_repository_path(user, project);
         if !repo_path.is_dir() {
             return Err(AppError("Not found"));
         }

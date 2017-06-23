@@ -96,3 +96,24 @@ pub struct NewProject<'a> {
     pub name: &'a str,
     pub description: &'a str,
 }
+
+#[derive(Debug, Serialize)]
+pub struct EncodableProject {
+    pub id: i32,
+    pub created_at: String,
+    pub user_id: i32,
+    pub name: String,
+    pub description: String,
+}
+
+impl From<Project> for EncodableProject {
+    fn from(val: Project) -> Self {
+        EncodableProject {
+            id: val.id,
+            created_at: val.created_at.format("%c").to_string(),
+            user_id: val.user_id,
+            name: val.name,
+            description: val.description,
+        }
+    }
+}
