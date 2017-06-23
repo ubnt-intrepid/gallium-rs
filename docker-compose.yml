@@ -13,7 +13,6 @@ services:
       - "./data/log/nginx:/var/log/nginx"
     links:
       - "db"
-    env_file: .env
 
   db:
     image: postgres:9.6-alpine
@@ -27,7 +26,8 @@ services:
     image: ubntintrepid/gallium-dev:latest
     links:
       - "db"
-    env_file: .env
+    environment:
+      - DATABASE_URL=postgres://postgres@db:5432/gallium
     volumes:
       - "./data/source:/source"
       - "./data/cargo_registry:/root/.cargo/registry"

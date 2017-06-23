@@ -1,0 +1,4 @@
+{
+  "database_url": "postgres://postgres@db:5432/gallium",
+  "repository_root": "/data"
+}
