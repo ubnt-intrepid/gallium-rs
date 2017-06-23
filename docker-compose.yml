@@ -7,7 +7,8 @@ services:
       - "3000:80"
       - "48895:22"
     volumes:
-      - "./data/gallium:/opt/gallium"
+      - "./data/gallium/bin:/opt/gallium/bin"
+      - "./conf:/opt/gallium/conf"
       - "./data/repositories:/data"
       - "./data/log/nginx:/var/log/nginx"
     links:
@@ -30,4 +31,4 @@ services:
     volumes:
       - "./data/source:/source"
       - "./data/cargo_registry:/root/.cargo/registry"
-      - "./data/gallium:/opt/gallium"
+      - "./data/gallium/bin:/opt/gallium/bin"
