@@ -3,7 +3,7 @@ use iron::status;
 use bodyparser::Struct;
 use iron_json_response::JsonResponse;
 use bcrypt;
-use super::ApiError;
+use api::ApiError;
 
 use diesel::insert;
 use diesel::prelude::*;

@@ -6,7 +6,7 @@ use diesel::insert;
 use diesel::prelude::*;
 use schema::public_keys;
 use models::{PublicKey, NewPublicKey, EncodablePublicKey};
-use super::ApiError;
+use api::ApiError;
 use app::App;
 
 pub(super) fn handle_get_ssh_keys(req: &mut Request) -> IronResult<Response> {

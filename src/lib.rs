@@ -21,6 +21,7 @@ extern crate r2d2_diesel;
 extern crate users;
 
 pub mod app;
+pub mod api;
 pub mod config;
 pub mod models;
 pub mod schema;
