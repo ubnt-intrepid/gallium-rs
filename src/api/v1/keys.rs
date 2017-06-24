@@ -12,12 +12,7 @@ use app::App;
 pub(super) fn handle_get_ssh_keys(req: &mut Request) -> IronResult<Response> {
     let app = req.extensions.get::<App>().unwrap();
     let conn = app.get_db_conn().map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "message": "Failed to retrieve pooled DB connection",
-            })),
-        ))
+        IronError::new(err, status::InternalServerError)
     })?;
     let keys: Vec<EncodablePublicKey> = public_keys::table
         .load::<PublicKey>(&*conn)
@@ -39,14 +34,7 @@ pub(super) fn handle_add_ssh_key(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| {
-            IronError::new(ApiError, (
-                status::BadRequest,
-                JsonResponse::json(&json!({
-                    "message": "Failed to parse parameter as JSON",
-                })),
-            ))
-        })?;
+        .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
 
     let new_key = NewPublicKey {
         user_id: params.user_id,
@@ -56,26 +44,14 @@ pub(super) fn handle_add_ssh_key(req: &mut Request) -> IronResult<Response> {
 
     let app = req.extensions.get::<App>().unwrap();
     let conn = app.get_db_conn().map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "message": "Failed to retrieve pooled DB connection",
-            })),
-        ))
+        IronError::new(err, status::InternalServerError)
     })?;
-    let inserted_key: EncodablePublicKey = insert(&new_key)
-        .into(public_keys::table)
-        .get_result::<PublicKey>(&*conn)
-        .map(Into::into)
-        .map_err(|err| {
-            let err_message = format!("Failed to insert requested key: {}", err);
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(&json!({
-                    "message": err_message,
-                })),
-            ))
-        })?;
+    let inserted_key: EncodablePublicKey =
+        insert(&new_key)
+            .into(public_keys::table)
+            .get_result::<PublicKey>(&*conn)
+            .map(Into::into)
+            .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     Ok(Response::with(
         (status::Created, JsonResponse::json(&inserted_key)),

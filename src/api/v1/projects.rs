@@ -18,24 +18,12 @@ use users::get_user_by_name;
 pub(super) fn get_projecs(req: &mut Request) -> IronResult<Response> {
     let app: &App = req.extensions.get::<App>().unwrap();
     let conn = app.get_db_conn().map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "message": "Failed to get DB connection"
-            })),
-        ))
+        IronError::new(err, status::InternalServerError)
     })?;
 
     let repos: Vec<EncodableProject> = projects::table
         .load::<Project>(&*conn)
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                    "message": "Failed to get repository list"
-                })),
-            ))
-        })?
+        .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
         .map(Into::into)
         .collect();
@@ -53,63 +41,40 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| IronError::new(ApiError, status::BadRequest))?;
+        .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
 
     let app: &App = req.extensions.get::<App>().unwrap();
     if app.resolve_repository_path(&params.user, &params.project)
         .is_ok()
     {
-        return Err(IronError::new(ApiError, status::Conflict));
+        return Err(IronError::new(ApiError(""), status::Conflict));
     }
 
     let conn = app.get_db_conn().map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "message": "Failed to get DB connection"
-            })),
-        ))
+        IronError::new(err, status::InternalServerError)
     })?;
 
     let user_id: i32 = users::table
         .filter(users::dsl::username.eq(&params.user))
         .select(users::dsl::id)
         .get_result(&*conn)
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                    "message": "Failed to get user id"
-                })),
-            ))
-        })?;
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let new_project = NewProject {
         name: &params.project,
         user_id,
         description: &params.description,
     };
-    let inserted_project: EncodableProject = insert(&new_project)
-        .into(projects::table)
-        .get_result::<Project>(&*conn)
-        .map(Into::into)
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                    "message": "failed to insert new project"
-                })),
-            ))
-        })?;
+    let inserted_project: EncodableProject =
+        insert(&new_project)
+            .into(projects::table)
+            .get_result::<Project>(&*conn)
+            .map(Into::into)
+            .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let repo_path = app.generate_repository_path(&params.user, &params.project);
     create_repository(&repo_path).map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "message": "failed to create Git repository",
-            })),
-        ))
+        IronError::new(err, status::InternalServerError)
     })?;
 
     Ok(Response::with(

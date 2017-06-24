@@ -4,16 +4,16 @@ use std::fmt;
 use std::error;
 
 #[derive(Debug)]
-pub struct ApiError;
+pub struct ApiError(&'static str);
 
 impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "API error")
+        write!(f, "{}", self.0)
     }
 }
 
 impl error::Error for ApiError {
     fn description(&self) -> &str {
-        "API error"
+        self.0
     }
 }

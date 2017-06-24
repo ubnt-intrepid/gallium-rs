@@ -23,24 +23,10 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| {
-            IronError::new(ApiError, (
-                status::BadRequest,
-                JsonResponse::json(json!({
-                    "message": "",
-                })),
-            ))
-        })?;
+        .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
 
     let bcrypt_hash = bcrypt::hash(&params.password, bcrypt::DEFAULT_COST)
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                    "message": "",
-                })),
-            ))
-        })?;
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let new_user = NewUser {
         username: &params.username,
@@ -50,12 +36,7 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
 
     let app = req.extensions.get::<App>().unwrap();
     let conn = app.get_db_conn().map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "message": "Failed to retrieve pooled DB connection",
-            })),
-        ))
+        IronError::new(err, status::InternalServerError)
     })?;
     let inserted_user: EncodableUser = insert(&new_user)
         .into(users::table)
