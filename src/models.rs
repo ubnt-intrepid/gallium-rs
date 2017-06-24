@@ -23,6 +23,7 @@ pub struct NewPublicKey<'a> {
 pub struct EncodablePublicKey {
     id: i32,
     created_at: String,
+    user_id: i32,
     title: String,
     key: String,
 }
@@ -32,6 +33,7 @@ impl From<PublicKey> for EncodablePublicKey {
         EncodablePublicKey {
             id: val.id,
             created_at: val.created_at.format("%c").to_string(),
+            user_id: val.user_id,
             title: val.title,
             key: val.key,
         }
