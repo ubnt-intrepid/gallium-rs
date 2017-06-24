@@ -2,86 +2,116 @@ use iron::prelude::*;
 use iron::status;
 use iron_json_response::JsonResponse;
 use router::Router;
-use git2::{Repository, Commit, ObjectType, Tree};
+use git2::{self, Repository, ObjectType, Tree};
 use serde_json::Value;
 use diesel::prelude::*;
 use app::App;
 use models::{User, Project};
 use schema::{users, projects};
-use api::ApiError;
 
 pub fn get_file_list(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
+    let app = req.extensions.get::<App>().unwrap();
 
-    let app: &App = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let id = req.get_id();
+    let (user, project) = app.get_project_from_id(id)?;
+
+    let repo = app.get_repository((user, project))?;
+    let tree = repo.get_head_tree_objects().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    let project: Project = projects::table
-        .filter(projects::dsl::id.eq(id))
-        .get_result(&*conn)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-    let user: User = users::table
-        .filter(users::dsl::id.eq(project.user_id))
-        .get_result(&*conn)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-    let repo_path = app.resolve_repository_path(&user.username, &format!("{}.git", project.name))
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-    let repo: Repository = Repository::open(&repo_path).map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-
-    let head_ref = repo.head().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-    let target_oid = head_ref.target().ok_or_else(|| {
-        IronError::new(ApiError(""), status::InternalServerError)
-    })?;
-
-    let head_commit: Commit = repo.find_commit(target_oid).map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-
-    let tree = head_commit.tree().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-    let elems = collect_tree_object(&repo, &tree);
-
-    Ok(Response::with((status::Ok, JsonResponse::json(elems))))
+    Ok(Response::with((status::Ok, JsonResponse::json(tree))))
 }
 
-fn collect_tree_object(repo: &Repository, tree: &Tree) -> Vec<Value> {
-    tree.into_iter()
-        .map(|entry| {
-            let kind = entry.kind().unwrap();
-            match kind {
-                ObjectType::Blob => {
-                    json!({
+
+trait GetIdentifier {
+    fn get_id(&self) -> i32;
+}
+
+impl<'a, 'b: 'a> GetIdentifier for Request<'a, 'b> {
+    fn get_id(&self) -> i32 {
+        let router = self.extensions.get::<Router>().unwrap();
+        router.find("id").and_then(|s| s.parse().ok()).unwrap()
+    }
+}
+
+
+trait GetProjectFromId {
+    fn get_project_from_id(&self, id: i32) -> IronResult<(User, Project)>;
+}
+
+impl GetProjectFromId for App {
+    fn get_project_from_id(&self, id: i32) -> IronResult<(User, Project)> {
+        let conn = self.get_db_conn().map_err(|err| {
+            IronError::new(err, status::InternalServerError)
+        })?;
+
+        users::table
+            .inner_join(projects::table)
+            .filter(projects::dsl::id.eq(id))
+            .get_result::<(User, Project)>(&*conn)
+            .map_err(|err| IronError::new(err, status::InternalServerError))
+    }
+}
+
+
+trait GetRepository {
+    fn get_repository(&self, project_pair: (User, Project)) -> IronResult<Repository>;
+}
+
+impl GetRepository for App {
+    fn get_repository(&self, project_pair: (User, Project)) -> IronResult<Repository> {
+        let (user, project) = project_pair;
+        let username = user.username;
+        let proj_name = format!("{}.git", project.name);
+
+        let repo_path = self.resolve_repository_path(&username, &proj_name)
+            .map_err(|err| IronError::new(err, status::InternalServerError))?;
+        Repository::open(repo_path).map_err(|err| IronError::new(err, status::InternalServerError))
+    }
+}
+
+
+trait HeadTreeObjects {
+    fn get_head_tree_objects(&self) -> Result<Vec<Value>, git2::Error>;
+    fn collect_tree_object(&self, tree: &Tree) -> Vec<Value>;
+}
+
+impl HeadTreeObjects for Repository {
+    fn get_head_tree_objects(&self) -> Result<Vec<Value>, git2::Error> {
+        let head = self.head()?;
+        let target = head.target().ok_or_else(|| git2::Error::from_str(""))?;
+        let commit = self.find_commit(target)?;
+        let tree = commit.tree()?;
+        let objects = self.collect_tree_object(&tree);
+        Ok(objects)
+    }
+
+    fn collect_tree_object(&self, tree: &Tree) -> Vec<Value> {
+        tree.into_iter()
+            .filter_map(|entry| {
+                let kind = entry.kind().unwrap();
+                match kind {
+                    ObjectType::Blob => {
+                        Some(json!({
                         "name": entry.name().unwrap(),
                         "filemode": format!("{:06o}", entry.filemode()),
-                    })
-                }
-                ObjectType::Tree => {
-                    let child = collect_tree_object(
-                        repo,
-                        &entry
-                            .to_object(repo)
+                    }))
+                    }
+                    ObjectType::Tree => {
+                        let child = self.collect_tree_object(&entry
+                            .to_object(self)
                             .map(|o| o.into_tree().ok().unwrap())
-                            .unwrap(),
-                    );
-                    json!({
+                            .unwrap());
+                        Some(json!({
                         "name": entry.name().unwrap(),
                         "filemode": format!("{:06o}", entry.filemode()),
                         "child": child,
-                    })
+                    }))
+                    }
+                    _ => None,
                 }
-                _ => Default::default(),
-            }
-        })
-        .collect()
+            })
+            .collect()
+    }
 }
