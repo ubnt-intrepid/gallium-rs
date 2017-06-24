@@ -1,14 +1,38 @@
+use diesel::{insert, delete};
+use diesel::prelude::*;
 use iron::prelude::*;
 use iron::status;
 use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
-use diesel::{insert, delete};
-use diesel::prelude::*;
-use schema::public_keys;
-use models::{PublicKey, NewPublicKey, EncodablePublicKey};
+
 use api::ApiError;
 use app::App;
+use models::{PublicKey, NewPublicKey};
+use schema::public_keys;
+
+
+#[derive(Serialize)]
+pub struct EncodablePublicKey {
+    id: i32,
+    created_at: String,
+    user_id: i32,
+    title: String,
+    key: String,
+}
+
+impl From<PublicKey> for EncodablePublicKey {
+    fn from(val: PublicKey) -> Self {
+        EncodablePublicKey {
+            id: val.id,
+            created_at: val.created_at.format("%c").to_string(),
+            user_id: val.user_id,
+            title: val.title,
+            key: val.key,
+        }
+    }
+}
+
 
 pub(super) fn get_keys(req: &mut Request) -> IronResult<Response> {
     let app = req.extensions.get::<App>().unwrap();

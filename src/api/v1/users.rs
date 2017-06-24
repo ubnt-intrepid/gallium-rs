@@ -1,17 +1,37 @@
-use iron::prelude::*;
-use iron::status;
 use bodyparser::Struct;
-use router::Router;
-use iron_json_response::JsonResponse;
 use bcrypt;
-use api::ApiError;
-
 use diesel::insert;
 use diesel::prelude::*;
-use models::{User, NewUser, EncodableUser};
-use schema::users;
+use iron::prelude::*;
+use iron::status;
+use iron_json_response::JsonResponse;
+use router::Router;
 
 use app::App;
+use api::ApiError;
+use models::{User, NewUser};
+use schema::users;
+
+
+#[derive(Serialize)]
+pub struct EncodableUser {
+    id: i32,
+    username: String,
+    email_address: String,
+    created_at: String,
+}
+
+impl From<User> for EncodableUser {
+    fn from(val: User) -> Self {
+        EncodableUser {
+            id: val.id,
+            username: val.username,
+            email_address: val.email_address,
+            created_at: val.created_at.format("%c").to_string(),
+        }
+    }
+}
+
 
 pub(super) fn get_users(req: &mut Request) -> IronResult<Response> {
     let app: &App = req.extensions.get::<App>().unwrap();

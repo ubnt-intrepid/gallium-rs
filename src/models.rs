@@ -19,28 +19,6 @@ pub struct NewPublicKey<'a> {
     pub title: &'a str,
 }
 
-#[derive(Serialize)]
-pub struct EncodablePublicKey {
-    id: i32,
-    created_at: String,
-    user_id: i32,
-    title: String,
-    key: String,
-}
-
-impl From<PublicKey> for EncodablePublicKey {
-    fn from(val: PublicKey) -> Self {
-        EncodablePublicKey {
-            id: val.id,
-            created_at: val.created_at.format("%c").to_string(),
-            user_id: val.user_id,
-            title: val.title,
-            key: val.key,
-        }
-    }
-}
-
-
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[has_many(public_keys)]
@@ -61,25 +39,6 @@ pub struct NewUser<'a> {
     pub bcrypt_hash: &'a str,
 }
 
-#[derive(Serialize)]
-pub struct EncodableUser {
-    id: i32,
-    username: String,
-    email_address: String,
-    created_at: String,
-}
-
-impl From<User> for EncodableUser {
-    fn from(val: User) -> Self {
-        EncodableUser {
-            id: val.id,
-            username: val.username,
-            email_address: val.email_address,
-            created_at: val.created_at.format("%c").to_string(),
-        }
-    }
-}
-
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[belongs_to(User)]
@@ -97,25 +56,4 @@ pub struct NewProject<'a> {
     pub user_id: i32,
     pub name: &'a str,
     pub description: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct EncodableProject {
-    pub id: i32,
-    pub created_at: String,
-    pub user_id: i32,
-    pub name: String,
-    pub description: String,
-}
-
-impl From<Project> for EncodableProject {
-    fn from(val: Project) -> Self {
-        EncodableProject {
-            id: val.id,
-            created_at: val.created_at.format("%c").to_string(),
-            user_id: val.user_id,
-            name: val.name,
-            description: val.description,
-        }
-    }
 }
