@@ -89,19 +89,14 @@ impl App {
         let project = project.trim_right_matches(".git");
 
         // get repository info from DB
-        use diesel::prelude::*;
-        use models::Project;
-        use schema::{users, projects};
         let conn = self.get_db_conn()?;
-        let user_id: i32 = users::table
+        let result = users::table
+            .inner_join(projects::table)
             .filter(users::dsl::username.eq(&user))
-            .select(users::dsl::id)
-            .get_result(&*conn)?;
-        let projects = projects::table
-            .filter(projects::dsl::user_id.eq(user_id))
             .filter(projects::dsl::name.eq(project))
-            .load::<Project>(&*conn)?;
-        if projects.len() == 0 {
+            .get_result::<(User, Project)>(&*conn)
+            .optional()?;
+        if result.is_none() {
             return Err(AppError::Other("The repository has not created yet"));
         }
 
