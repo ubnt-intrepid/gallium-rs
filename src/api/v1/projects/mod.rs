@@ -11,7 +11,7 @@ use iron_json_response::JsonResponse;
 use api::ApiError;
 use app::App;
 use git;
-use models::{Project, NewProject};
+use models::{User, Project, NewProject};
 use schema::{users, projects};
 
 
@@ -84,9 +84,7 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
         .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
 
     let app: &App = req.extensions.get::<App>().unwrap();
-    if app.resolve_repository_path(&params.user, &params.project)
-        .is_ok()
-    {
+    if app.get_repository(&params.user, &params.project).is_ok() {
         return Err(IronError::new(ApiError(""), status::Conflict));
     }
 
@@ -120,4 +118,30 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
     Ok(Response::with(
         (status::Created, JsonResponse::json(inserted_project)),
     ))
+}
+
+
+trait GetProjectInfoFromId {
+    fn get_project_from_id(&self) -> IronResult<(User, Project)>;
+}
+
+impl<'a, 'b: 'a> GetProjectInfoFromId for Request<'a, 'b> {
+    fn get_project_from_id(&self) -> IronResult<(User, Project)> {
+        let router = self.extensions.get::<Router>().unwrap();
+        let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
+
+        let app = self.extensions.get::<App>().unwrap();
+        let conn = app.get_db_conn().map_err(|err| {
+            IronError::new(err, status::InternalServerError)
+        })?;
+        users::table
+            .inner_join(projects::table)
+            .filter(projects::dsl::id.eq(id))
+            .get_result::<(User, Project)>(&*conn)
+            .optional()
+            .map_err(|err| IronError::new(err, status::InternalServerError))
+            .and_then(|result| {
+                result.ok_or_else(|| IronError::new(ApiError(""), status::NotFound))
+            })
+    }
 }

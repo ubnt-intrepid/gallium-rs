@@ -59,6 +59,10 @@ impl Repository {
         Ok(Repository { inner })
     }
 
+    pub fn path(&self) -> &Path {
+        self.inner.path()
+    }
+
     pub fn get_head_tree_objects(&self) -> Result<Vec<JsonValue>, git2::Error> {
         let head = self.inner.head()?;
         let target = head.target().ok_or_else(|| git2::Error::from_str(""))?;

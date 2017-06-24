@@ -70,12 +70,17 @@ fn access(_m: &clap::ArgMatches) {
     }
     let user = &elems[0];
     let project = &elems[1];
+    if !project.ends_with(".git") {
+        panic!("The repository URL should be end with '.git'");
+    }
+    let project = project.trim_right_matches(".git");
+
 
     let config = Config::load().unwrap();
     let app: App = App::new(config).unwrap();
-    let repo_path = app.resolve_repository_path(user, project).expect(
-        "failed to resolve repository path",
-    );
+    let repo_path = app.get_repository(user, project)
+        .map(|repo| repo.path().to_owned())
+        .expect("failed to resolve repository path");
 
     let err = Command::new(action).arg(repo_path.to_str().unwrap()).exec();
     panic!("failed to exec: {:?}", err)

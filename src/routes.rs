@@ -1,5 +1,4 @@
 use std::io::Read;
-use std::path::PathBuf;
 use iron::prelude::*;
 use iron::status;
 use iron::headers::{CacheControl, CacheDirective, Encoding, ContentEncoding, ContentType};
@@ -11,7 +10,7 @@ use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
 use api;
 use app::{App, AppMiddleware, AppError};
-use git;
+use git::Repository;
 
 
 pub fn create_handler(app: App) -> Chain {
@@ -47,13 +46,22 @@ fn repo_route(path: &str) -> String {
     format!("/:user/:project{}", path)
 }
 
-fn get_repository_path(req: &mut Request) -> IronResult<PathBuf> {
+fn get_repository(req: &mut Request) -> IronResult<Repository> {
     let route = req.extensions.get::<Router>().unwrap();
     let user = route.find("user").unwrap();
     let project = route.find("project").unwrap();
+    if !project.ends_with(".git") {
+        return Err(IronError::new(
+            AppError::Other(
+                "The repository URL should be end with '.git'",
+            ),
+            status::NotFound,
+        ));
+    }
+    let project = project.trim_right_matches(".git");
 
     let app = req.extensions.get::<App>().unwrap();
-    app.resolve_repository_path(user, project).map_err(|err| {
+    app.get_repository(user, project).map_err(|err| {
         IronError::new(err, status::NotFound)
     })
 }
@@ -98,10 +106,7 @@ fn packet_write(data: &str) -> Vec<u8> {
 
 fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
-    let repo_path = get_repository_path(req)?;
-    let repo = git::Repository::open(repo_path).map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let repo = get_repository(req)?;
 
     let mut body = packet_write(&format!("# service=git-{}\n", service));
     body.extend(b"0000");
@@ -123,10 +128,7 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
 }
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
-    let repo_path = get_repository_path(req)?;
-    let repo = git::Repository::open(repo_path).map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let repo = get_repository(req)?;
 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
