@@ -5,3 +5,5 @@
 /target/
 /.env
 /.crates.toml
+
+/project1

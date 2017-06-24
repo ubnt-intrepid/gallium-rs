@@ -1,7 +1,9 @@
 use iron::prelude::*;
 use iron::status;
+use iron_json_response::JsonResponse;
 use router::Router;
-use git2::{Repository, Commit};
+use git2::{Repository, Commit, ObjectType, Tree};
+use serde_json::Value;
 use diesel::prelude::*;
 use app::App;
 use models::{User, Project};
@@ -45,5 +47,41 @@ pub fn get_file_list(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    Ok(Response::with((status::Ok, head_commit.message().unwrap())))
+    let tree = head_commit.tree().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+    let elems = collect_tree_object(&repo, &tree);
+
+    Ok(Response::with((status::Ok, JsonResponse::json(elems))))
+}
+
+fn collect_tree_object(repo: &Repository, tree: &Tree) -> Vec<Value> {
+    tree.into_iter()
+        .map(|entry| {
+            let kind = entry.kind().unwrap();
+            match kind {
+                ObjectType::Blob => {
+                    json!({
+                        "name": entry.name().unwrap(),
+                        "filemode": format!("{:06o}", entry.filemode()),
+                    })
+                }
+                ObjectType::Tree => {
+                    let child = collect_tree_object(
+                        repo,
+                        &entry
+                            .to_object(repo)
+                            .map(|o| o.into_tree().ok().unwrap())
+                            .unwrap(),
+                    );
+                    json!({
+                        "name": entry.name().unwrap(),
+                        "filemode": format!("{:06o}", entry.filemode()),
+                        "child": child,
+                    })
+                }
+                _ => Default::default(),
+            }
+        })
+        .collect()
 }
