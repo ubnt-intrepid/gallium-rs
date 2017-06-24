@@ -24,6 +24,7 @@ extern crate git2;
 pub mod app;
 pub mod api;
 pub mod config;
+pub mod git;
 pub mod models;
 pub mod schema;
 pub mod routes;

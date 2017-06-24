@@ -1,9 +1,8 @@
-mod git;
-
 use iron::Chain;
 use mount::Mount;
 use app::{App, AppMiddleware};
 use api;
+use git;
 
 pub fn create_handler(app: App) -> Chain {
     let mut mount = Mount::new();

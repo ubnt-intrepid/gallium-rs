@@ -183,3 +183,55 @@ pub fn create_git_handler() -> Router {
 
     router
 }
+
+
+pub mod util {
+    use std::io;
+    use std::path::Path;
+    use std::process::Command;
+    use std::os::unix::process::CommandExt;
+    use users::get_user_by_name;
+
+    pub fn create_repository<P: AsRef<Path>>(repo_path: P) -> io::Result<()> {
+        let repo_path_str = repo_path.as_ref().to_str().unwrap();
+
+        // Get uid/gid
+        let user = get_user_by_name("git").unwrap();
+        let uid = user.uid();
+        let gid = user.primary_group_id();
+
+        // Create destination directory of repository.
+        // TODO: use libc
+        Command::new("/bin/mkdir")
+            .args(&["-p", repo_path_str])
+            .uid(uid)
+            .gid(gid)
+            .spawn()
+            .and_then(|mut ch| ch.wait())
+            .and_then(|st| if st.success() {
+                Ok(())
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "cannot change owner of repository",
+                ))
+            })?;
+
+        // Initialize git repository
+        Command::new("/usr/bin/git")
+            .args(&["init", "--bare", repo_path_str])
+            .current_dir(&repo_path)
+            .uid(uid)
+            .gid(gid)
+            .spawn()
+            .and_then(|mut ch| ch.wait())
+            .and_then(|status| if status.success() {
+                Ok(())
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "`git init` exited with non-zero status",
+                ))
+            })
+    }
+}
