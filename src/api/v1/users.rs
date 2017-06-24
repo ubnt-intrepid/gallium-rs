@@ -16,7 +16,7 @@ use schema::users;
 #[derive(Serialize)]
 pub struct EncodableUser {
     id: i32,
-    username: String,
+    name: String,
     email_address: String,
     created_at: String,
 }
@@ -25,7 +25,7 @@ impl From<User> for EncodableUser {
     fn from(val: User) -> Self {
         EncodableUser {
             id: val.id,
-            username: val.username,
+            name: val.name,
             email_address: val.email_address,
             created_at: val.created_at.format("%c").to_string(),
         }
@@ -70,9 +70,10 @@ pub(super) fn get_user(req: &mut Request) -> IronResult<Response> {
 pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]
     struct Params {
-        username: String,
+        name: String,
         email_address: String,
         password: String,
+        screen_name: Option<String>,
     }
     let params = req.get::<Struct<Params>>()
         .ok()
@@ -83,9 +84,10 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let new_user = NewUser {
-        username: &params.username,
+        name: &params.name,
         email_address: &params.email_address,
         bcrypt_hash: &bcrypt_hash,
+        screen_name: params.screen_name.as_ref().map(|s| s.as_str()),
     };
 
     let app = req.extensions.get::<App>().unwrap();

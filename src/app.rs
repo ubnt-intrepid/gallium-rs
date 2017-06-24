@@ -85,9 +85,9 @@ impl App {
         let conn = self.get_db_conn()?;
         let result = users::table
             .inner_join(projects::table)
-            .filter(users::dsl::username.eq(&user))
+            .filter(users::dsl::name.eq(&user))
             .filter(projects::dsl::name.eq(project))
-            .select((users::dsl::username, projects::dsl::name))
+            .select((users::dsl::name, projects::dsl::name))
             .get_result::<(String, String)>(&*conn)
             .optional()?;
         match result {

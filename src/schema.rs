@@ -23,9 +23,10 @@ table! {
 table! {
     users (id) {
         id -> Int4,
-        username -> Text,
+        name -> Text,
         email_address -> Text,
         bcrypt_hash -> Text,
         created_at -> Timestamp,
+        screen_name -> Text,
     }
 }

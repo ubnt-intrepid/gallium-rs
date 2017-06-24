@@ -93,7 +93,7 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
     })?;
 
     let user_id: i32 = users::table
-        .filter(users::dsl::username.eq(&params.user))
+        .filter(users::dsl::name.eq(&params.user))
         .select(users::dsl::id)
         .get_result(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;

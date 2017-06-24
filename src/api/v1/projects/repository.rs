@@ -8,7 +8,7 @@ pub fn get_file_list(req: &mut Request) -> IronResult<Response> {
     let (user, project) = req.get_project_from_id()?;
 
     let app = req.extensions.get::<App>().unwrap();
-    let repo = app.get_repository(&user.username, &project.name).map_err(
+    let repo = app.get_repository(&user.name, &project.name).map_err(
         |err| {
             IronError::new(err, status::InternalServerError)
         },
