@@ -7,7 +7,12 @@ use iron::typemap;
 use config::Config;
 use r2d2::{Pool, PooledConnection, InitializationError, GetTimeout};
 use r2d2_diesel::ConnectionManager;
+use diesel::prelude::*;
 use diesel::pg::PgConnection;
+use models::{User, Project};
+use schema::{users, projects};
+use git2;
+use git::Repository;
 
 type DbPool = Pool<ConnectionManager<PgConnection>>;
 type PooledDbConnection = PooledConnection<ConnectionManager<PgConnection>>;
@@ -17,6 +22,7 @@ type PooledDbConnection = PooledConnection<ConnectionManager<PgConnection>>;
 pub enum AppError {
     Diesel(::diesel::result::Error),
     R2D2(GetTimeout),
+    Git2(git2::Error),
     Other(&'static str),
 }
 impl fmt::Display for AppError {
@@ -24,6 +30,7 @@ impl fmt::Display for AppError {
         match *self {
             AppError::Diesel(ref err) => write!(f, "{}", err),
             AppError::R2D2(ref err) => write!(f, "{}", err),
+            AppError::Git2(ref err) => write!(f, "{}", err),
             AppError::Other(ref err) => write!(f, "{}", err),
         }
     }
@@ -33,6 +40,7 @@ impl error::Error for AppError {
         match *self {
             AppError::Diesel(ref err) => err.description(),
             AppError::R2D2(ref err) => err.description(),
+            AppError::Git2(ref err) => err.description(),
             AppError::Other(ref err) => err,
         }
     }
@@ -47,6 +55,12 @@ impl From<::diesel::result::Error> for AppError {
         AppError::Diesel(err)
     }
 }
+impl From<git2::Error> for AppError {
+    fn from(err: git2::Error) -> Self {
+        AppError::Git2(err)
+    }
+}
+
 
 pub struct App {
     config: Config,
@@ -97,7 +111,26 @@ impl App {
         }
         Ok(repo_path)
     }
+
+    pub fn get_repository(&self, project_pair: (User, Project)) -> Result<Repository, AppError> {
+        let (user, project) = project_pair;
+        let username = user.username;
+        let proj_name = format!("{}.git", project.name);
+        let repo_path = self.resolve_repository_path(&username, &proj_name)?;
+
+        Repository::open(repo_path).map_err(Into::into)
+    }
+
+    pub fn get_project_from_id(&self, id: i32) -> Result<(User, Project), AppError> {
+        let conn = self.get_db_conn()?;
+        users::table
+            .inner_join(projects::table)
+            .filter(projects::dsl::id.eq(id))
+            .get_result::<(User, Project)>(&*conn)
+            .map_err(Into::into)
+    }
 }
+
 
 impl typemap::Key for App {
     type Value = Arc<App>;

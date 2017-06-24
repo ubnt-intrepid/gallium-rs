@@ -113,7 +113,7 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
             .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let repo_path = app.generate_repository_path(&params.user, &params.project);
-    git::util::create_repository(&repo_path).map_err(|err| {
+    git::create_repository(&repo_path).map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
