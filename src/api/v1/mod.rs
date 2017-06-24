@@ -20,6 +20,11 @@ pub fn create_api_handler() -> Chain {
     router.get("/projects", projects::get_projecs, "get_projects");
     router.get("/projects/:id", projects::get_project, "get_project");
     router.post("/projects", projects::create_project, "create_project");
+    router.get(
+        "/projects/:id/repository",
+        projects::repository::get_file_list,
+        "get_repository_file_list",
+    );
 
     let mut chain = Chain::new(router);
     chain.link_after(JsonResponseMiddleware::new());

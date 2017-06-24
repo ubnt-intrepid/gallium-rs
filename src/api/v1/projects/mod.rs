@@ -1,3 +1,5 @@
+pub(super) mod repository;
+
 use diesel::insert;
 use diesel::prelude::*;
 use iron::prelude::*;

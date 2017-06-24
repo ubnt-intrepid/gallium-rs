@@ -19,6 +19,7 @@ extern crate bcrypt;
 extern crate r2d2;
 extern crate r2d2_diesel;
 extern crate users;
+extern crate git2;
 
 pub mod app;
 pub mod api;
