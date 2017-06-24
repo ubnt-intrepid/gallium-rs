@@ -12,6 +12,48 @@ pub struct Repository {
 }
 
 impl Repository {
+    pub fn create<P: AsRef<Path>>(repo_path: P) -> io::Result<Self> {
+        let repo_path_str = repo_path.as_ref().to_str().unwrap();
+
+        // Get uid/gid
+        let user = get_user_by_name("git").unwrap();
+        let uid = user.uid();
+        let gid = user.primary_group_id();
+
+        // Create destination directory of repository.
+        Command::new("/bin/mkdir")
+            .args(&["-p", repo_path_str])
+            .uid(uid)
+            .gid(gid)
+            .spawn()
+            .and_then(|mut ch| ch.wait())
+            .and_then(|st| if st.success() {
+                Ok(())
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "cannot change owner of repository",
+                ))
+            })?;
+
+        // Initialize git repository
+        let status = Command::new("/usr/bin/git")
+            .args(&["init", "--bare", repo_path_str])
+            .current_dir(&repo_path)
+            .uid(uid)
+            .gid(gid)
+            .spawn()
+            .and_then(|mut ch| ch.wait())?;
+        if !status.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "`git init` exited with non-zero status",
+            ));
+        }
+
+        Ok(Self::open(&repo_path).unwrap())
+    }
+
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, git2::Error> {
         let inner = git2::Repository::open(path)?;
         Ok(Repository { inner })
@@ -26,7 +68,7 @@ impl Repository {
         Ok(objects)
     }
 
-    pub fn collect_tree_object(&self, tree: &git2::Tree) -> Vec<JsonValue> {
+    fn collect_tree_object(&self, tree: &git2::Tree) -> Vec<JsonValue> {
         tree.into_iter()
             .filter_map(|entry| {
                 let kind = entry.kind().unwrap();
@@ -53,88 +95,36 @@ impl Repository {
             })
             .collect()
     }
-}
 
-
-pub fn create_repository<P: AsRef<Path>>(repo_path: P) -> io::Result<()> {
-    let repo_path_str = repo_path.as_ref().to_str().unwrap();
-
-    // Get uid/gid
-    let user = get_user_by_name("git").unwrap();
-    let uid = user.uid();
-    let gid = user.primary_group_id();
-
-    // Create destination directory of repository.
-    Command::new("/bin/mkdir")
-        .args(&["-p", repo_path_str])
-        .uid(uid)
-        .gid(gid)
-        .spawn()
-        .and_then(|mut ch| ch.wait())
-        .and_then(|st| if st.success() {
-            Ok(())
+    pub fn run_rpc_command<'a>(
+        &self,
+        service: &str,
+        stdin: Option<&mut Box<Read + 'a>>,
+    ) -> io::Result<Vec<u8>> {
+        let args: Vec<&str> = if stdin.is_some() {
+            vec![service, "--stateless-rpc", "."]
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "cannot change owner of repository",
-            ))
-        })?;
+            vec![service, "--stateless-rpc", "--advertise-refs", "."]
+        };
 
-    // Initialize git repository
-    Command::new("/usr/bin/git")
-        .args(&["init", "--bare", repo_path_str])
-        .current_dir(&repo_path)
-        .uid(uid)
-        .gid(gid)
-        .spawn()
-        .and_then(|mut ch| ch.wait())
-        .and_then(|status| if status.success() {
-            Ok(())
+        let mut child = Command::new("/usr/bin/git")
+            .args(args)
+            .current_dir(self.inner.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+
+        if let Some(stdin) = stdin {
+            io::copy(stdin, child.stdin.as_mut().unwrap())?;
+        }
+
+        let output = child.wait_with_output()?;
+        if output.status.success() {
+            Ok(output.stdout)
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "`git init` exited with non-zero status",
-            ))
-        })
-}
-
-pub fn run_rpc_command<'a, P: AsRef<Path>>(
-    repo_path: P,
-    service: &str,
-    stdin: Option<&mut Box<Read + 'a>>,
-) -> io::Result<Vec<u8>> {
-    let args: Vec<&str> = if stdin.is_some() {
-        vec![
-                service,
-                "--stateless-rpc",
-                repo_path.as_ref().to_str().unwrap(),
-            ]
-    } else {
-        vec![
-                service,
-                "--stateless-rpc",
-                "--advertise-refs",
-                repo_path.as_ref().to_str().unwrap(),
-            ]
-    };
-
-    let mut child = Command::new("/usr/bin/git")
-        .args(args)
-        .current_dir(&repo_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
-
-    if let Some(stdin) = stdin {
-        io::copy(stdin, child.stdin.as_mut().unwrap())?;
-    }
-
-    let output = child.wait_with_output()?;
-    if output.status.success() {
-        Ok(output.stdout)
-    } else {
-        let message = format!("`git {}` was exited with non-zero status: {}", service, String::from_utf8_lossy(&output.stderr));
-        Err(io::Error::new(io::ErrorKind::Other, message))
+            let message = format!("`git {}` was exited with non-zero status: {}", service, String::from_utf8_lossy(&output.stderr));
+            Err(io::Error::new(io::ErrorKind::Other, message))
+        }
     }
 }

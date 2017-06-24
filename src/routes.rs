@@ -99,14 +99,15 @@ fn packet_write(data: &str) -> Vec<u8> {
 fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
     let repo_path = get_repository_path(req)?;
+    let repo = git::Repository::open(repo_path).map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
 
     let mut body = packet_write(&format!("# service=git-{}\n", service));
     body.extend(b"0000");
-    let refs = git::run_rpc_command(repo_path, service, None).map_err(
-        |err| {
-            IronError::new(err, status::InternalServerError)
-        },
-    )?;
+    let refs = repo.run_rpc_command(service, None).map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
     body.extend(refs);
 
     Ok(Response::with((
@@ -123,6 +124,9 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
     let repo_path = get_repository_path(req)?;
+    let repo = git::Repository::open(repo_path).map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
@@ -146,7 +150,7 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         _ => Box::new(&mut req.body),
     };
 
-    let body = git::run_rpc_command(repo_path, service, Some(&mut body_reader))
+    let body = repo.run_rpc_command(service, Some(&mut body_reader))
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     Ok(Response::with((
