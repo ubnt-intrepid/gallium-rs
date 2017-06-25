@@ -8,8 +8,8 @@ use std::process::Command;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use diesel::prelude::*;
-use gallium::models::PublicKey;
-use gallium::schema::public_keys;
+use gallium::models::{Project, PublicKey};
+use gallium::schema::{projects, public_keys};
 use gallium::app::App;
 use gallium::config::Config;
 
@@ -21,7 +21,7 @@ fn build_cli<'a, 'b: 'a>() -> clap::App<'a, 'b> {
         .subcommand(
             clap::SubCommand::with_name("access")
                 .about("Authenticated access for SSH command execution")
-                .arg_from_usage("--user-id=[user-id]  'User ID'"),
+                .arg_from_usage("--user-id=<user-id>  'User ID'"),
         )
         .subcommand(clap::SubCommand::with_name("show").about(
             "Show the list of public keys",
@@ -37,8 +37,9 @@ fn main() {
     }
 }
 
-fn access(_m: &clap::ArgMatches) {
-    // let _user_id: i32 = m.value_of("user-id").and_then(|s| s.parse().ok()).unwrap();
+fn access(m: &clap::ArgMatches) {
+    let user_id: i32 = m.value_of("user-id").and_then(|s| s.parse().ok()).unwrap();
+
     let ssh_original_command =
         env::var("SSH_ORIGINAL_COMMAND").expect("Not found: 'SSH_ORIGINAL_COMMAND'");
     let command =
@@ -75,14 +76,30 @@ fn access(_m: &clap::ArgMatches) {
     }
     let project = project.trim_right_matches(".git");
 
-
     let config = Config::load().unwrap();
     let app: App = App::new(config).unwrap();
-    let repo_path = app.get_repository(user, project)
-        .map(|repo| repo.path().to_owned())
-        .expect("failed to resolve repository path");
 
-    let err = Command::new(action).arg(repo_path.to_str().unwrap()).exec();
+    let conn = app.get_db_conn().unwrap();
+    if projects::table
+        .filter(projects::dsl::name.eq(project))
+        .filter(projects::dsl::user_id.eq(user_id))
+        .get_result::<Project>(&*conn)
+        .optional()
+        .unwrap()
+        .is_none()
+    {
+        panic!("Permission denied");
+    }
+
+    let repo = app.get_repository(user, project).expect(
+        "failed to resolve repository path",
+    );
+
+
+
+    let err = Command::new(action)
+        .arg(repo.path().to_str().unwrap())
+        .exec();
     panic!("failed to exec: {:?}", err)
 }
 
@@ -93,6 +110,10 @@ fn show(_m: &clap::ArgMatches) {
 
     let keys: Vec<PublicKey> = public_keys::table.load(&*conn).unwrap();
     for key in keys {
-        println!("command=\"/opt/gallium/bin/pubkey access\" {}", key.key);
+        println!(
+            "command=\"/opt/gallium/bin/pubkey access --user-id={}\" {}",
+            key.user_id,
+            key.key
+        );
     }
 }
