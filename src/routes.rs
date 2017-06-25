@@ -93,7 +93,7 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     let app = req.extensions.get::<App>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    let repo = app.open_repository(user, project).map_err(|err| {
+    let (_, _, repo) = app.open_repository(user, project).map_err(|err| {
         IronError::new(err, status::NotFound)
     })?;
 

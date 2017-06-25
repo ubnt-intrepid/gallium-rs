@@ -10,7 +10,7 @@ use r2d2::{Pool, PooledConnection, InitializationError, GetTimeout};
 use r2d2_diesel::ConnectionManager;
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
-use models::User;
+use models::{User, Project};
 use schema::{users, projects};
 use git2;
 use git::Repository;
@@ -83,25 +83,27 @@ impl App {
         self.config.repository_root.join(user).join(project)
     }
 
-    pub fn open_repository(&self, user: &str, project: &str) -> Result<Repository, AppError> {
+    pub fn open_repository(
+        &self,
+        user: &str,
+        project: &str,
+    ) -> Result<(User, Project, Repository), AppError> {
         let conn = self.get_db_conn()?;
-        let result = users::table
-            .inner_join(projects::table)
-            .filter(users::dsl::name.eq(&user))
-            .filter(projects::dsl::name.eq(project))
-            .select((users::dsl::name, projects::dsl::name))
-            .get_result::<(String, String)>(&*conn)
-            .optional()?;
-        match result {
-            Some((user, project)) => {
-                let repo_path = self.generate_repository_path(&user, &project);
-                if !repo_path.is_dir() {
-                    return Err(AppError::Other("Not found"));
-                }
-                Repository::open(repo_path).map_err(Into::into)
-            }
-            None => Err(AppError::Other("The repository has not created yet")),
+        let (user, project) =
+            users::table
+                .inner_join(projects::table)
+                .filter(users::dsl::name.eq(&user))
+                .filter(projects::dsl::name.eq(project))
+                .get_result::<(User, Project)>(&*conn)
+                .optional()?
+                .ok_or_else(|| AppError::Other("The repository has not created yet"))?;
+
+        let repo_path = self.generate_repository_path(&user.name, &project.name);
+        if !repo_path.is_dir() {
+            return Err(AppError::Other("Not found"));
         }
+        let repo = Repository::open(repo_path)?;
+        Ok((user, project, repo))
     }
 
     pub fn authenticate(&self, username: &str, password: &str) -> Result<Option<User>, AppError> {

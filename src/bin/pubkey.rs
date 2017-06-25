@@ -4,12 +4,13 @@ extern crate clap;
 extern crate shlex;
 
 use std::env;
+use std::io::Write;
 use std::process::Command;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use diesel::prelude::*;
 use gallium::models::{Project, PublicKey};
-use gallium::schema::{projects, public_keys};
+use gallium::schema::public_keys;
 use gallium::app::App;
 use gallium::config::Config;
 
@@ -30,80 +31,41 @@ fn build_cli<'a, 'b: 'a>() -> clap::App<'a, 'b> {
 
 fn main() {
     let ref matches = build_cli().get_matches();
-    match matches.subcommand() {
+    let err = match matches.subcommand() {
         ("access", Some(m)) => access(m),
         ("show", Some(m)) => show(m),
         _ => unreachable!(),
+    };
+    if let Err(err) = err {
+        println!("Failed with: {}", err);
+        std::process::exit(1);
     }
 }
 
-fn access(m: &clap::ArgMatches) {
-    let user_id: i32 = m.value_of("user-id").and_then(|s| s.parse().ok()).unwrap();
-
-    let ssh_original_command =
-        env::var("SSH_ORIGINAL_COMMAND").expect("Not found: 'SSH_ORIGINAL_COMMAND'");
-    let command =
-        shlex::split(&ssh_original_command).expect("failed to parse SSH_ORIGINAL_COMMAND");
-    if command.len() < 1 {
-        panic!("command is not given");
-    } else if command.len() < 2 {
-        panic!("Missing repository");
-    }
-
-    // validate action
-    let action = &command[0];
-    if action != "git-receive-pack" && action != "git-upload-pack" &&
-        action != "git-upload-archive"
-    {
-        panic!("Permission denied.");
-    }
-
-    // validate repository
-    let repository = &command[1];
-    if Path::new(repository).is_absolute() || repository.starts_with("./") ||
-        repository.starts_with("../")
-    {
-        panic!("incorrect repository path");
-    }
-    let elems: Vec<_> = repository.split("/").collect();
-    if elems.len() != 2 {
-        panic!("incorrect repository path");
-    }
-    let user = &elems[0];
-    let project = &elems[1];
-    if !project.ends_with(".git") {
-        panic!("The repository URL should be end with '.git'");
-    }
-    let project = project.trim_right_matches(".git");
-
+fn access(m: &clap::ArgMatches) -> Result<(), String> {
     let config = Config::load().unwrap();
     let app: App = App::new(config).unwrap();
 
-    let conn = app.get_db_conn().unwrap();
-    if projects::table
-        .filter(projects::dsl::name.eq(project))
-        .filter(projects::dsl::user_id.eq(user_id))
-        .get_result::<Project>(&*conn)
-        .optional()
-        .unwrap()
-        .is_none()
-    {
-        panic!("Permission denied");
-    }
+    let s = env::var("SSH_ORIGINAL_COMMAND").map_err(
+        |err| err.to_string(),
+    )?;
+    let (action, user, project) = parse_ssh_command(&s)?;
 
-    let repo = app.open_repository(user, project).expect(
-        "failed to resolve repository path",
-    );
+    let (_user, project, repo) = app.open_repository(&user, &project).map_err(
+        |err| err.to_string(),
+    )?;
 
-
+    let user_id = m.value_of("user-id").and_then(|s| s.parse().ok()).unwrap();
+    check_scope(&action, user_id, &project)?;
 
     let err = Command::new(action)
         .arg(repo.path().to_str().unwrap())
         .exec();
-    panic!("failed to exec: {:?}", err)
+    let _ = writeln!(&mut std::io::stderr(), "failed to exec: {:?}", err);
+    std::process::exit(1);
 }
 
-fn show(_m: &clap::ArgMatches) {
+fn show(_m: &clap::ArgMatches) -> Result<(), String> {
     let config = Config::load().unwrap();
     let app = App::new(config).unwrap();
     let conn = app.get_db_conn().unwrap();
@@ -116,4 +78,61 @@ fn show(_m: &clap::ArgMatches) {
             key.key
         );
     }
+
+    Ok(())
+}
+
+fn parse_ssh_command(s: &str) -> Result<(String, String, String), String> {
+    let command = shlex::split(s).ok_or_else(|| {
+        "failed to parse SSH_ORIGINAL_COMMAND".to_string()
+    })?;
+
+    if command.len() < 1 {
+        return Err("command is not given".to_string());
+    } else if command.len() < 2 {
+        return Err("Missing repository".to_string());
+    }
+
+    // validate action
+    let action = &command[0];
+    if action != "git-receive-pack" && action != "git-upload-pack" &&
+        action != "git-upload-archive"
+    {
+        return Err("Permission denied".to_string());
+    }
+
+    // validate repository
+    let repository = &command[1];
+    if Path::new(repository).is_absolute() || repository.starts_with("./") ||
+        repository.starts_with("../")
+    {
+        return Err("incorrect repository path".to_string());
+    }
+
+    let elems: Vec<_> = repository.split("/").collect();
+    if elems.len() != 2 {
+        return Err("Incorrect repository path".to_owned());
+    }
+
+    let user = &elems[0];
+    let project = &elems[1];
+
+    if !project.ends_with(".git") {
+        return Err("The repository URL should be end with '.git'".to_owned());
+    }
+    let project = project.trim_right_matches(".git");
+
+    Ok((action.to_owned(), (*user).to_owned(), project.to_owned()))
+}
+
+fn check_scope(action: &str, user_id: i32, project: &Project) -> Result<(), String> {
+    match action {
+        "git-receive-pack" => {
+            if project.user_id != user_id {
+                return Err("Permission denied".to_string());
+            }
+        }
+        _ => (),
+    }
+    Ok(())
 }
