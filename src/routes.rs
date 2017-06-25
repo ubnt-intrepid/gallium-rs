@@ -50,6 +50,7 @@ fn get_repository(req: &mut Request) -> IronResult<Repository> {
     let route = req.extensions.get::<Router>().unwrap();
     let user = route.find("user").unwrap();
     let project = route.find("project").unwrap();
+    let project = project.trim_right_matches("/");
     if !project.ends_with(".git") {
         return Err(IronError::new(
             AppError::Other(
