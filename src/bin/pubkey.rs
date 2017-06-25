@@ -91,7 +91,7 @@ fn access(m: &clap::ArgMatches) {
         panic!("Permission denied");
     }
 
-    let repo = app.get_repository(user, project).expect(
+    let repo = app.open_repository(user, project).expect(
         "failed to resolve repository path",
     );
 

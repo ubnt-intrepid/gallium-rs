@@ -81,7 +81,7 @@ impl App {
         self.config.repository_root.join(user).join(project)
     }
 
-    pub fn get_repository(&self, user: &str, project: &str) -> Result<Repository, AppError> {
+    pub fn open_repository(&self, user: &str, project: &str) -> Result<Repository, AppError> {
         let conn = self.get_db_conn()?;
         let result = users::table
             .inner_join(projects::table)

@@ -84,7 +84,7 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
         .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
 
     let app: &App = req.extensions.get::<App>().unwrap();
-    if app.get_repository(&params.user, &params.name).is_ok() {
+    if app.open_repository(&params.user, &params.name).is_ok() {
         return Err(IronError::new(ApiError(""), status::Conflict));
     }
 

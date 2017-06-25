@@ -53,47 +53,11 @@ fn create_git_handler() -> Router {
     router
 }
 
-fn basic_auth(req: &mut Request) -> IronResult<()> {
-    match req.headers.get::<Authorization<Basic>>() {
-        Some(&Authorization(Basic {
-                                ref username,
-                                password: Some(ref password),
-                            })) => {
-            let app = req.extensions.get::<App>().unwrap();
-            let conn = app.get_db_conn().unwrap();
-            let user: User = users::table
-                .filter(users::dsl::name.eq(username))
-                .get_result(&*conn)
-                .unwrap();
-            if !bcrypt::verify(password, &user.bcrypt_hash).unwrap_or(false) {
-                return Err(IronError::new(AppError::Other(""), status::Unauthorized));
-            }
-        }
-        Some(&Authorization(Basic {
-                                username: _,
-                                password: None,
-                            })) => {
-            return Err(IronError::new(AppError::Other(""), status::Unauthorized));
-        }
-        None => {
-            return Err(IronError::new(AppError::Other(""), (
-                status::Unauthorized,
-                Header(WWWAuthenticate(
-                    "Basic realm=\"main\"".to_owned(),
-                )),
-            )));
-        }
-    }
-    Ok(())
-}
-
 fn repo_route(path: &str) -> String {
     format!("/:user/:project{}", path)
 }
 
-fn get_repository(req: &mut Request) -> IronResult<Repository> {
-    basic_auth(req)?;
-
+fn get_repo_identifier_from_req<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> {
     let route = req.extensions.get::<Router>().unwrap();
     let user = route.find("user").unwrap();
     let project = route.find("project").unwrap();
@@ -108,10 +72,69 @@ fn get_repository(req: &mut Request) -> IronResult<Repository> {
     }
     let project = project.trim_right_matches(".git");
 
+    Ok((user, project))
+}
+
+fn authenticate(app: &App, username: &str, password: &str) -> Result<Option<User>, AppError> {
+    let conn = app.get_db_conn()?;
+    let user = users::table
+        .filter(users::dsl::name.eq(username))
+        .get_result::<User>(&*conn)
+        .optional()?
+        .and_then(|user| {
+            let verified = bcrypt::verify(password, &user.bcrypt_hash).unwrap_or(false);
+            if verified { Some(user) } else { None }
+        });
+    Ok(user)
+}
+
+fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> {
+    let &Authorization(Basic {
+                           ref username,
+                           ref password,
+                       }) = req.headers.get::<Authorization<Basic>>().ok_or_else(|| {
+        IronError::new(AppError::Other(""), (
+            status::Unauthorized,
+            Header(WWWAuthenticate(
+                "Basic realm=\"main\"".to_owned(),
+            )),
+        ))
+    })?;
+
+    let password = password.as_ref().ok_or_else(|| {
+        IronError::new(AppError::Other("Password is empty"), status::Unauthorized)
+    })?;
+
+    Ok((username, password))
+}
+
+fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     let app = req.extensions.get::<App>().unwrap();
-    app.get_repository(user, project).map_err(|err| {
-        IronError::new(err, status::NotFound)
-    })
+    let (user, project) = get_repo_identifier_from_req(req)?;
+    let repo = app.open_repository(user, project)
+        .and_then(|repo| Ok(repo))
+        .map_err(|err| IronError::new(err, status::NotFound))?;
+
+    // TODO: check scope
+    // MEMO:
+    // * receive-pack
+    //   - public/private ともに認証必須
+    //* upload-pack
+    //   - private の場合のみ認証必須
+    //   - 現状は実質 public のみであるため認証回りは省略している
+    match service {
+        "receive-pack" => {
+            let (username, password) = get_basic_auth_param(req)?;
+            let _user =
+                authenticate(app, username, password)
+                    .map_err(|err| IronError::new(err, status::InternalServerError))?
+                    .ok_or_else(|| IronError::new(AppError::Other(""), status::Unauthorized))?;
+        }
+        "upload-pack" => (),
+        _ => unreachable!(),
+    }
+
+    Ok(repo)
 }
 
 fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
@@ -154,7 +177,7 @@ fn packet_write(data: &str) -> Vec<u8> {
 
 fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
-    let repo = get_repository(req)?;
+    let repo = open_repository(req, service)?;
 
     let mut body = packet_write(&format!("# service=git-{}\n", service));
     body.extend(b"0000");
@@ -176,7 +199,7 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
 }
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
-    let repo = get_repository(req)?;
+    let repo = open_repository(req, service)?;
 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
