@@ -75,8 +75,8 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]
     struct Params {
         user: String,
-        project: String,
-        description: String,
+        name: String,
+        description: Option<String>,
     }
     let params = req.get::<Struct<Params>>()
         .ok()
@@ -84,7 +84,7 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
         .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
 
     let app: &App = req.extensions.get::<App>().unwrap();
-    if app.get_repository(&params.user, &params.project).is_ok() {
+    if app.get_repository(&params.user, &params.name).is_ok() {
         return Err(IronError::new(ApiError(""), status::Conflict));
     }
 
@@ -99,9 +99,9 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let new_project = NewProject {
-        name: &params.project,
+        name: &params.name,
         user_id,
-        description: &params.description,
+        description: params.description.as_ref().map(|s| s.as_str()),
     };
     let inserted_project: EncodableProject =
         insert(&new_project)
@@ -110,7 +110,7 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
             .map(Into::into)
             .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
-    let repo_path = app.generate_repository_path(&params.user, &params.project);
+    let repo_path = app.generate_repository_path(&params.user, &params.name);
     git::Repository::create(&repo_path).map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;

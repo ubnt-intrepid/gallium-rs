@@ -57,5 +57,5 @@ pub struct Project {
 pub struct NewProject<'a> {
     pub user_id: i32,
     pub name: &'a str,
-    pub description: &'a str,
+    pub description: Option<&'a str>,
 }
