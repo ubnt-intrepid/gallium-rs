@@ -8,15 +8,10 @@ use iron::modifiers::Header;
 use mount::Mount;
 use router::Router;
 use urlencoded::UrlEncodedQuery;
-use bcrypt;
 use flate2::read::GzDecoder;
-use diesel::prelude::*;
-
 use api;
 use app::{App, AppMiddleware, AppError};
 use git::Repository;
-use models::User;
-use schema::users;
 
 
 header! {
@@ -75,19 +70,6 @@ fn get_repo_identifier_from_req<'a>(req: &'a Request) -> IronResult<(&'a str, &'
     Ok((user, project))
 }
 
-fn authenticate(app: &App, username: &str, password: &str) -> Result<Option<User>, AppError> {
-    let conn = app.get_db_conn()?;
-    let user = users::table
-        .filter(users::dsl::name.eq(username))
-        .get_result::<User>(&*conn)
-        .optional()?
-        .and_then(|user| {
-            let verified = bcrypt::verify(password, &user.bcrypt_hash).unwrap_or(false);
-            if verified { Some(user) } else { None }
-        });
-    Ok(user)
-}
-
 fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> {
     let &Authorization(Basic {
                            ref username,
@@ -111,9 +93,9 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     let app = req.extensions.get::<App>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    let repo = app.open_repository(user, project)
-        .and_then(|repo| Ok(repo))
-        .map_err(|err| IronError::new(err, status::NotFound))?;
+    let repo = app.open_repository(user, project).map_err(|err| {
+        IronError::new(err, status::NotFound)
+    })?;
 
     // TODO: check scope
     // MEMO:
@@ -126,7 +108,7 @@ fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
         "receive-pack" => {
             let (username, password) = get_basic_auth_param(req)?;
             let _user =
-                authenticate(app, username, password)
+                app.authenticate(username, password)
                     .map_err(|err| IronError::new(err, status::InternalServerError))?
                     .ok_or_else(|| IronError::new(AppError::Other(""), status::Unauthorized))?;
         }

@@ -1,3 +1,4 @@
+use bcrypt;
 use std::error;
 use std::fmt;
 use std::path::PathBuf;
@@ -9,6 +10,7 @@ use r2d2::{Pool, PooledConnection, InitializationError, GetTimeout};
 use r2d2_diesel::ConnectionManager;
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
+use models::User;
 use schema::{users, projects};
 use git2;
 use git::Repository;
@@ -100,6 +102,19 @@ impl App {
             }
             None => Err(AppError::Other("The repository has not created yet")),
         }
+    }
+
+    pub fn authenticate(&self, username: &str, password: &str) -> Result<Option<User>, AppError> {
+        let conn = self.get_db_conn()?;
+        let user = users::table
+            .filter(users::dsl::name.eq(username))
+            .get_result::<User>(&*conn)
+            .optional()?
+            .and_then(|user| {
+                let verified = bcrypt::verify(password, &user.bcrypt_hash).unwrap_or(false);
+                if verified { Some(user) } else { None }
+            });
+        Ok(user)
     }
 }
 
