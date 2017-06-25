@@ -20,6 +20,8 @@ extern crate r2d2;
 extern crate r2d2_diesel;
 extern crate users;
 extern crate git2;
+#[macro_use]
+extern crate hyper;
 
 pub mod app;
 pub mod api;

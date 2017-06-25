@@ -1,16 +1,27 @@
 use std::io::Read;
 use iron::prelude::*;
 use iron::status;
-use iron::headers::{CacheControl, CacheDirective, Encoding, ContentEncoding, ContentType};
+use iron::headers::{Authorization, Basic, CacheControl, CacheDirective, Encoding, ContentEncoding,
+                    ContentType};
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
 use mount::Mount;
 use router::Router;
 use urlencoded::UrlEncodedQuery;
+use bcrypt;
 use flate2::read::GzDecoder;
+use diesel::prelude::*;
+
 use api;
 use app::{App, AppMiddleware, AppError};
 use git::Repository;
+use models::User;
+use schema::users;
+
+
+header! {
+    (WWWAuthenticate, "WWW-Authenticate") => [String]
+}
 
 
 pub fn create_handler(app: App) -> Chain {
@@ -42,11 +53,47 @@ fn create_git_handler() -> Router {
     router
 }
 
+fn basic_auth(req: &mut Request) -> IronResult<()> {
+    match req.headers.get::<Authorization<Basic>>() {
+        Some(&Authorization(Basic {
+                                ref username,
+                                password: Some(ref password),
+                            })) => {
+            let app = req.extensions.get::<App>().unwrap();
+            let conn = app.get_db_conn().unwrap();
+            let user: User = users::table
+                .filter(users::dsl::name.eq(username))
+                .get_result(&*conn)
+                .unwrap();
+            if !bcrypt::verify(password, &user.bcrypt_hash).unwrap_or(false) {
+                return Err(IronError::new(AppError::Other(""), status::Unauthorized));
+            }
+        }
+        Some(&Authorization(Basic {
+                                username: _,
+                                password: None,
+                            })) => {
+            return Err(IronError::new(AppError::Other(""), status::Unauthorized));
+        }
+        None => {
+            return Err(IronError::new(AppError::Other(""), (
+                status::Unauthorized,
+                Header(WWWAuthenticate(
+                    "Basic realm=\"main\"".to_owned(),
+                )),
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn repo_route(path: &str) -> String {
     format!("/:user/:project{}", path)
 }
 
 fn get_repository(req: &mut Request) -> IronResult<Repository> {
+    basic_auth(req)?;
+
     let route = req.extensions.get::<Router>().unwrap();
     let user = route.find("user").unwrap();
     let project = route.find("project").unwrap();

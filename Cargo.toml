@@ -24,6 +24,7 @@ diesel = { version = "~0.13", features = ["postgres","chrono"] }
 diesel_codegen = { version = "~0.13", features = ["postgres"] }
 chrono = "~0.3"
 iron = "~0.5"
+hyper = "~0.10"
 router = "~0.5"
 mount = "~0.3"
 bodyparser = "~0.7"
