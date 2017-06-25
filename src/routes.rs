@@ -93,7 +93,7 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     let app = req.extensions.get::<App>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    let (_, _, repo) = app.open_repository(user, project).map_err(|err| {
+    let (_user, project, repo) = app.open_repository(user, project).map_err(|err| {
         IronError::new(err, status::NotFound)
     })?;
 
@@ -107,10 +107,14 @@ fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     match service {
         "receive-pack" => {
             let (username, password) = get_basic_auth_param(req)?;
-            let _user =
+            let auth_user =
                 app.authenticate(username, password)
                     .map_err(|err| IronError::new(err, status::InternalServerError))?
                     .ok_or_else(|| IronError::new(AppError::Other(""), status::Unauthorized))?;
+
+            if project.user_id != auth_user.id {
+                return Err(IronError::new(AppError::Other(""), status::Unauthorized));
+            }
         }
         "upload-pack" => (),
         _ => unreachable!(),
