@@ -22,6 +22,8 @@ extern crate users;
 extern crate git2;
 #[macro_use]
 extern crate hyper;
+extern crate jsonwebtoken;
+extern crate uuid;
 
 pub mod app;
 pub mod config;

@@ -41,3 +41,5 @@ r2d2 = "*"
 r2d2-diesel = "*"
 users = "*"
 git2 = { version = "~0.6", default-features = false, features = [] }
+uuid = { version = "~0.5", features = ["v4"] }
+jsonwebtoken = "*"
