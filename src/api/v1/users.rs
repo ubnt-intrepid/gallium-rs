@@ -8,7 +8,7 @@ use iron_json_response::JsonResponse;
 use router::Router;
 
 use app::App;
-use api::ApiError;
+use super::ApiError;
 use models::{User, NewUser};
 use schema::users;
 

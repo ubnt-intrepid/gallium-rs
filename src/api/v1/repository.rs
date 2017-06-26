@@ -2,7 +2,7 @@ use iron::prelude::*;
 use iron::status;
 use iron_json_response::JsonResponse;
 use router::Router;
-use api::ApiError;
+use super::ApiError;
 use app::App;
 
 // TODO: use `git ls-tree`

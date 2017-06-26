@@ -6,7 +6,7 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
 
-use api::ApiError;
+use super::ApiError;
 use app::App;
 use models::{PublicKey, NewPublicKey};
 use schema::public_keys;

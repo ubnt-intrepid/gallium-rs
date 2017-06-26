@@ -6,7 +6,7 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
 
-use api::ApiError;
+use super::ApiError;
 use app::App;
 use git;
 use models::{Project, NewProject};

@@ -24,9 +24,13 @@ extern crate git2;
 extern crate hyper;
 
 pub mod app;
-pub mod api;
 pub mod config;
 pub mod git;
 pub mod models;
 pub mod schema;
 pub mod routes;
+
+pub mod api {
+    #[path = "v1/mod.rs"]
+    pub mod v1;
+}
