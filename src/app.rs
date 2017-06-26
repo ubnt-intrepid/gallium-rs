@@ -106,6 +106,29 @@ impl App {
         Ok((user, project, repo))
     }
 
+    pub fn open_repository_from_id(
+        &self,
+        id: i32,
+    ) -> Result<Option<(User, Project, Repository)>, AppError> {
+        let conn = self.get_db_conn()?;
+        let result = users::table
+            .inner_join(projects::table)
+            .filter(projects::dsl::id.eq(id))
+            .get_result::<(User, Project)>(&*conn)
+            .optional()?;
+        match result {
+            Some((user, project)) => {
+                let repo_path = self.generate_repository_path(&user.name, &project.name);
+                if !repo_path.is_dir() {
+                    return Err(AppError::Other(""));
+                }
+                let repo = Repository::open(repo_path)?;
+                Ok(Some((user, project, repo)))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn authenticate(&self, username: &str, password: &str) -> Result<Option<User>, AppError> {
         let conn = self.get_db_conn()?;
         let user = users::table

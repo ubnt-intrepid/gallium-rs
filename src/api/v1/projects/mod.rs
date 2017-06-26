@@ -1,6 +1,6 @@
 pub(super) mod repository;
 
-use diesel::insert;
+use diesel::{insert, delete};
 use diesel::prelude::*;
 use iron::prelude::*;
 use iron::status;
@@ -117,6 +117,36 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
 
     Ok(Response::with(
         (status::Created, JsonResponse::json(inserted_project)),
+    ))
+}
+
+pub(super) fn remove_project(req: &mut Request) -> IronResult<Response> {
+    let router = req.extensions.get::<Router>().unwrap();
+    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
+
+    let app: &App = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+
+    let result = app.open_repository_from_id(id).map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+    let (_, _, repo) = match result {
+        Some(r) => r,
+        None => return Ok(Response::with(status::Ok)),
+    };
+
+    repo.remove().map_err(|(_, err)| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+
+    delete(projects::table.filter(projects::dsl::id.eq(id)))
+        .execute(&*conn)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+
+    Ok(Response::with(
+        (status::NoContent, JsonResponse::json(json!({}))),
     ))
 }
 

@@ -113,5 +113,7 @@ pub(super) fn delete_key(req: &mut Request) -> IronResult<Response> {
         .execute(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
-    Ok(Response::with((status::Ok, JsonResponse::json(json!({})))))
+    Ok(Response::with(
+        (status::NoContent, JsonResponse::json(json!({}))),
+    ))
 }

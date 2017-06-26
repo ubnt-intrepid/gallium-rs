@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::{self, Read};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
@@ -130,5 +131,9 @@ impl Repository {
             let message = format!("`git {}` was exited with non-zero status: {}", service, String::from_utf8_lossy(&output.stderr));
             Err(io::Error::new(io::ErrorKind::Other, message))
         }
+    }
+
+    pub fn remove(self) -> Result<(), (Self, io::Error)> {
+        fs::remove_dir_all(self.inner.path()).map_err(|err| (self, err))
     }
 }
