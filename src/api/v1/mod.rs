@@ -1,6 +1,7 @@
 mod keys;
 mod users;
 mod projects;
+mod repository;
 
 use iron::prelude::*;
 use router::Router;
@@ -24,7 +25,7 @@ pub fn create_api_handler() -> Chain {
 
     router.get(
         "/projects/:id/repository",
-        projects::repository::get_file_list,
+        repository::get_file_list,
         "get_repository_file_list",
     );
 
