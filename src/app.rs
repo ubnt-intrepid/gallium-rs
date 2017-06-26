@@ -44,8 +44,14 @@ impl App {
         self.db_pool.get()
     }
 
-    pub fn generate_repository_path(&self, user: &str, project: &str) -> PathBuf {
+    fn generate_repository_path(&self, user: &str, project: &str) -> PathBuf {
         self.config.repository_root.join(user).join(project)
+    }
+
+    pub fn create_new_repository(&self, user: &str, project: &str) -> AppResult<()> {
+        let repo_path = self.generate_repository_path(user, project);
+        Repository::create(&repo_path)?;
+        Ok(())
     }
 
     pub fn open_repository(

@@ -8,7 +8,6 @@ use iron_json_response::JsonResponse;
 
 use error::AppError;
 use app::App;
-use git;
 use models::{Project, NewProject};
 use schema::{users, projects};
 
@@ -79,12 +78,20 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
+        .ok_or_else(|| {
+            IronError::new(AppError::from("Invalid Request"), status::BadRequest)
+        })?;
 
     let app: &App = req.extensions.get::<App>().unwrap();
     if app.open_repository(&params.user, &params.name).is_ok() {
-        return Err(IronError::new(AppError::from(""), status::Conflict));
+        return Err(IronError::new(
+            AppError::from("The repository has already created."),
+            status::Conflict,
+        ));
     }
+
+    app.create_new_repository(&params.user, &params.name)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let conn = app.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
@@ -101,17 +108,11 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
         user_id,
         description: params.description.as_ref().map(|s| s.as_str()),
     };
-    let inserted_project: EncodableProject =
-        insert(&new_project)
-            .into(projects::table)
-            .get_result::<Project>(&*conn)
-            .map(Into::into)
-            .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-    let repo_path = app.generate_repository_path(&params.user, &params.name);
-    git::Repository::create(&repo_path).map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let inserted_project = insert(&new_project)
+        .into(projects::table)
+        .get_result::<Project>(&*conn)
+        .map(EncodableProject::from)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     Ok(Response::with(
         (status::Created, JsonResponse::json(inserted_project)),
