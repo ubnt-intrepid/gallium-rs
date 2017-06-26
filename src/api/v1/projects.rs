@@ -6,7 +6,7 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
 
-use super::ApiError;
+use error::AppError;
 use app::App;
 use git;
 use models::{Project, NewProject};
@@ -79,11 +79,11 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
+        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
 
     let app: &App = req.extensions.get::<App>().unwrap();
     if app.open_repository(&params.user, &params.name).is_ok() {
-        return Err(IronError::new(ApiError(""), status::Conflict));
+        return Err(IronError::new(AppError::from(""), status::Conflict));
     }
 
     let conn = app.get_db_conn().map_err(|err| {

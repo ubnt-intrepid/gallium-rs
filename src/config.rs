@@ -1,32 +1,6 @@
-use std::{env, error, fmt, fs, io, path};
+use std::{env, fs, path};
 use serde_json;
-
-
-#[derive(Debug)]
-pub enum ConfigError {
-    Io(io::Error),
-    SerdeJson(serde_json::Error),
-}
-impl fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "config error")
-    }
-}
-impl error::Error for ConfigError {
-    fn description(&self) -> &str {
-        "config error"
-    }
-}
-impl From<io::Error> for ConfigError {
-    fn from(err: io::Error) -> ConfigError {
-        ConfigError::Io(err)
-    }
-}
-impl From<serde_json::Error> for ConfigError {
-    fn from(err: serde_json::Error) -> ConfigError {
-        ConfigError::SerdeJson(err)
-    }
-}
+use error::AppResult;
 
 
 #[derive(Debug, Clone, Deserialize)]
@@ -36,7 +10,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load() -> Result<Self, ConfigError> {
+    pub fn load() -> AppResult<Self> {
         let conf_path = env::current_exe()?
             .parent()
             .unwrap()

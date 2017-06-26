@@ -8,7 +8,7 @@ use iron_json_response::JsonResponse;
 use router::Router;
 
 use app::App;
-use super::ApiError;
+use error::AppError;
 use models::{User, NewUser};
 use schema::users;
 
@@ -78,7 +78,7 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
+        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
 
     let bcrypt_hash = bcrypt::hash(&params.password, bcrypt::DEFAULT_COST)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;

@@ -1,6 +1,4 @@
 use bcrypt;
-use std::error;
-use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use iron::{Request, IronResult, BeforeMiddleware};
@@ -12,55 +10,11 @@ use diesel::prelude::*;
 use diesel::pg::PgConnection;
 use models::{User, Project};
 use schema::{users, projects};
-use git2;
 use git::Repository;
+use error::AppResult;
 
 type DbPool = Pool<ConnectionManager<PgConnection>>;
 type PooledDbConnection = PooledConnection<ConnectionManager<PgConnection>>;
-
-
-#[derive(Debug)]
-pub enum AppError {
-    Diesel(::diesel::result::Error),
-    R2D2(GetTimeout),
-    Git2(git2::Error),
-    Other(&'static str),
-}
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            AppError::Diesel(ref err) => write!(f, "{}", err),
-            AppError::R2D2(ref err) => write!(f, "{}", err),
-            AppError::Git2(ref err) => write!(f, "{}", err),
-            AppError::Other(ref err) => write!(f, "{}", err),
-        }
-    }
-}
-impl error::Error for AppError {
-    fn description(&self) -> &str {
-        match *self {
-            AppError::Diesel(ref err) => err.description(),
-            AppError::R2D2(ref err) => err.description(),
-            AppError::Git2(ref err) => err.description(),
-            AppError::Other(ref err) => err,
-        }
-    }
-}
-impl From<GetTimeout> for AppError {
-    fn from(err: GetTimeout) -> Self {
-        AppError::R2D2(err)
-    }
-}
-impl From<::diesel::result::Error> for AppError {
-    fn from(err: ::diesel::result::Error) -> Self {
-        AppError::Diesel(err)
-    }
-}
-impl From<git2::Error> for AppError {
-    fn from(err: git2::Error) -> Self {
-        AppError::Git2(err)
-    }
-}
 
 
 pub struct App {
@@ -87,20 +41,19 @@ impl App {
         &self,
         user: &str,
         project: &str,
-    ) -> Result<(User, Project, Repository), AppError> {
+    ) -> AppResult<(User, Project, Repository)> {
         let conn = self.get_db_conn()?;
-        let (user, project) =
-            users::table
-                .inner_join(projects::table)
-                .filter(users::dsl::name.eq(&user))
-                .filter(projects::dsl::name.eq(project))
-                .get_result::<(User, Project)>(&*conn)
-                .optional()?
-                .ok_or_else(|| AppError::Other("The repository has not created yet"))?;
+        let (user, project) = users::table
+            .inner_join(projects::table)
+            .filter(users::dsl::name.eq(&user))
+            .filter(projects::dsl::name.eq(project))
+            .get_result::<(User, Project)>(&*conn)
+            .optional()?
+            .ok_or_else(|| "The repository has not created yet")?;
 
         let repo_path = self.generate_repository_path(&user.name, &project.name);
         if !repo_path.is_dir() {
-            return Err(AppError::Other("Not found"));
+            return Err("Not found".into());
         }
         let repo = Repository::open(repo_path)?;
         Ok((user, project, repo))
@@ -109,7 +62,7 @@ impl App {
     pub fn open_repository_from_id(
         &self,
         id: i32,
-    ) -> Result<Option<(User, Project, Repository)>, AppError> {
+    ) -> AppResult<Option<(User, Project, Repository)>> {
         let conn = self.get_db_conn()?;
         let result = users::table
             .inner_join(projects::table)
@@ -120,7 +73,7 @@ impl App {
             Some((user, project)) => {
                 let repo_path = self.generate_repository_path(&user.name, &project.name);
                 if !repo_path.is_dir() {
-                    return Err(AppError::Other(""));
+                    return Err("".into());
                 }
                 let repo = Repository::open(repo_path)?;
                 Ok(Some((user, project, repo)))
@@ -129,7 +82,7 @@ impl App {
         }
     }
 
-    pub fn authenticate(&self, username: &str, password: &str) -> Result<Option<User>, AppError> {
+    pub fn authenticate(&self, username: &str, password: &str) -> AppResult<Option<User>> {
         let conn = self.get_db_conn()?;
         let user = users::table
             .filter(users::dsl::name.eq(username))

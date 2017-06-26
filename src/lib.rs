@@ -24,9 +24,12 @@ extern crate git2;
 extern crate hyper;
 extern crate jsonwebtoken;
 extern crate uuid;
+#[macro_use]
+extern crate error_chain;
 
 pub mod app;
 pub mod config;
+pub mod error;
 pub mod git;
 pub mod models;
 pub mod schema;

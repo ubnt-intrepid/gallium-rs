@@ -6,7 +6,7 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
 
-use super::ApiError;
+use error::AppError;
 use app::App;
 use models::{PublicKey, NewPublicKey};
 use schema::public_keys;
@@ -76,7 +76,7 @@ pub(super) fn add_key(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| IronError::new(ApiError(""), status::BadRequest))?;
+        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
 
     let new_key = NewPublicKey {
         user_id: params.user_id,

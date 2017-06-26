@@ -1,30 +1,13 @@
 mod auth;
+mod error;
 mod keys;
 mod projects;
 mod repository;
 mod users;
 
-use std::fmt;
-use std::error;
 use iron::prelude::*;
 use router::Router;
 use iron_json_response::JsonResponseMiddleware;
-
-#[derive(Debug)]
-pub struct ApiError(&'static str);
-
-impl fmt::Display for ApiError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl error::Error for ApiError {
-    fn description(&self) -> &str {
-        self.0
-    }
-}
-
 
 pub fn create_api_handler() -> Chain {
     let mut router = Router::new();

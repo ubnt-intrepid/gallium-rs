@@ -10,7 +10,8 @@ use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
 use api;
-use app::{App, AppMiddleware, AppError};
+use app::{App, AppMiddleware};
+use error::AppError;
 use git::Repository;
 
 
@@ -59,7 +60,7 @@ fn get_repo_identifier_from_req<'a>(req: &'a Request) -> IronResult<(&'a str, &'
     let project = project.trim_right_matches("/");
     if !project.ends_with(".git") {
         return Err(IronError::new(
-            AppError::Other(
+            AppError::from(
                 "The repository URL should be end with '.git'",
             ),
             status::NotFound,
@@ -75,7 +76,7 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
                            ref username,
                            ref password,
                        }) = req.headers.get::<Authorization<Basic>>().ok_or_else(|| {
-        IronError::new(AppError::Other(""), (
+        IronError::new(AppError::from(""), (
             status::Unauthorized,
             Header(WWWAuthenticate(
                 "Basic realm=\"main\"".to_owned(),
@@ -84,7 +85,7 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
     })?;
 
     let password = password.as_ref().ok_or_else(|| {
-        IronError::new(AppError::Other("Password is empty"), status::Unauthorized)
+        IronError::new(AppError::from("Password is empty"), status::Unauthorized)
     })?;
 
     Ok((username, password))
@@ -110,10 +111,10 @@ fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
             let auth_user =
                 app.authenticate(username, password)
                     .map_err(|err| IronError::new(err, status::InternalServerError))?
-                    .ok_or_else(|| IronError::new(AppError::Other(""), status::Unauthorized))?;
+                    .ok_or_else(|| IronError::new(AppError::from(""), status::Unauthorized))?;
 
             if project.user_id != auth_user.id {
-                return Err(IronError::new(AppError::Other(""), status::Unauthorized));
+                return Err(IronError::new(AppError::from(""), status::Unauthorized));
             }
         }
         "upload-pack" => (),
@@ -132,13 +133,13 @@ fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
         Some("git-receive-pack") => Ok("receive-pack"),
         Some("git-upload-pack") => Ok("upload-pack"),
         Some(ref s) => {
-            Err(IronError::new(AppError::Other(""), (
+            Err(IronError::new(AppError::from(""), (
                 status::Forbidden,
                 format!("Invalid service name: {}", s),
             )))
         }
         None => {
-            Err(IronError::new(AppError::Other(""), (
+            Err(IronError::new(AppError::from(""), (
                 status::Forbidden,
                 "Requires service name",
             )))
@@ -190,7 +191,7 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
             if format!("x-git-{}-request", service) == s.as_str() => (),
-        _ => return Err(IronError::new(AppError::Other(""), status::Unauthorized)),
+        _ => return Err(IronError::new(AppError::from(""), status::Unauthorized)),
     }
 
     let mut body_reader: Box<Read> = match req.headers.get::<ContentEncoding>() {

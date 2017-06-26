@@ -10,13 +10,13 @@ use iron::url::form_urlencoded;
 use iron_json_response::JsonResponse;
 use uuid::Uuid;
 use app::App;
-use super::ApiError;
+use error::AppError;
 
 pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, _))) => (),
         _ => {
-            return Err(IronError::new(ApiError("OAuth"), (
+            return Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
                 JsonResponse::json(json!({
                     "error": "invalid_request",
@@ -39,7 +39,7 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
                     "code" |
                     "token" |
                     "client_credentials" => {
-                        return Err(IronError::new(ApiError("OAuth"), (
+                        return Err(IronError::new(AppError::from("OAuth"), (
                             status::BadRequest,
                             JsonResponse::json(json!({
                                 "error": "unsupported_grant",
@@ -47,7 +47,7 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
                         )))
                     }
                     _ => {
-                        return Err(IronError::new(ApiError("OAuth"), (
+                        return Err(IronError::new(AppError::from("OAuth"), (
                             status::BadRequest,
                             JsonResponse::json(json!({
                                 "error": "invalid_grant",
@@ -65,7 +65,7 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
     let (username, password) = match (username, password) {
         (Some(u), Some(p)) => (u, p),
         _ => {
-            return Err(IronError::new(ApiError("OAuth"), (
+            return Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
                 JsonResponse::json(json!({
                     "error": "invalid_request",
@@ -79,7 +79,7 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
     let user = app.authenticate(&username, &password)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| {
-            IronError::new(ApiError("OAuth"), (
+            IronError::new(AppError::from("OAuth"), (
                 status::Unauthorized,
                 JsonResponse::json(json!({
                     "error": "unauthorized_client",
