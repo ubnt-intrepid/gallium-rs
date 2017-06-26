@@ -31,6 +31,7 @@ pub mod app;
 pub mod config;
 pub mod error;
 pub mod git;
+pub mod middleware;
 pub mod models;
 pub mod schema;
 pub mod routes;

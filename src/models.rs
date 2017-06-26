@@ -1,5 +1,6 @@
 use super::schema::{users, public_keys, projects};
 use chrono::NaiveDateTime;
+use iron::typemap;
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[belongs_to(User)]
@@ -31,6 +32,11 @@ pub struct User {
     pub created_at: NaiveDateTime,
     pub screen_name: String,
 }
+
+impl typemap::Key for User {
+    type Value = User;
+}
+
 
 #[derive(Insertable)]
 #[table_name = "users"]

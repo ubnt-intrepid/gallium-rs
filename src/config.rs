@@ -7,6 +7,7 @@ use error::AppResult;
 pub struct Config {
     pub database_url: String,
     pub repository_root: path::PathBuf,
+    pub jwt_secret: String,
 }
 
 impl Config {

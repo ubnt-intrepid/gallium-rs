@@ -9,5 +9,6 @@ error_chain! {
         R2D2(::r2d2::GetTimeout);
         Git2(::git2::Error);
         SerdeJson(::serde_json::Error);
+        JsonWebToken(::jsonwebtoken::errors::Error);
     }
 }

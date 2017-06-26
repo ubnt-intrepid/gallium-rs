@@ -1,16 +1,16 @@
 use std::borrow::Borrow;
 use std::io;
-use chrono::UTC;
-use jsonwebtoken;
+use std::time::Duration;
 use iron::prelude::*;
 use iron::status;
 use iron::headers::ContentType;
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::url::form_urlencoded;
 use iron_json_response::JsonResponse;
-use uuid::Uuid;
 use app::App;
 use error::AppError;
+
+const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
 
 pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
     match req.headers.get::<ContentType>() {
@@ -30,7 +30,7 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    let (mut username, mut password, mut _scope) = (None, None, None);
+    let (mut username, mut password, mut scope) = (None, None, None);
     for (key, val) in form_urlencoded::parse(&body) {
         match key.borrow() as &str {
             "grant_type" => {
@@ -58,7 +58,7 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
             }
             "username" => username = Some(val),
             "password" => password = Some(val),
-            "scope" => _scope = Some(val),
+            "scope" => scope = Some(val),
             _ => (),
         }
     }
@@ -73,7 +73,7 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
             )))
         }
     };
-    let scope: Option<Vec<&str>> = _scope.as_ref().map(|scope| scope.split(" ").collect());
+    let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
 
     let app = req.extensions.get::<App>().unwrap();
     let user = app.authenticate(&username, &password)
@@ -87,37 +87,18 @@ pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
             ))
         })?;
 
-    // TODO: move secret key to Config
-    let secret = "secret-key";
-    let expires_in = 3600;
-    let iss = "http://localhost:3000/";
-    let aud = vec!["http://localhost:3000/"];
-
-    let jti = Uuid::new_v4();
-    let iat = UTC::now();
-    let claims = json!({
-        "jti": jti.to_string(),
-        "iss": iss,
-        "aud": aud,
-        "sub": "access_token",
-        "iat": iat.timestamp(),
-        "nbf": iat.timestamp(),
-        "exp": iat.timestamp() + expires_in,
-        "priv": {
-            "user_id": user.id,
-            "username": user.name,
-            "scope": scope,
-        }
-    });
-    let token = jsonwebtoken::encode(&Default::default(), &claims, secret.as_bytes())
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+    let token = app.generate_jwt(
+        &user,
+        scope.as_ref().map(|s| s.as_slice()),
+        Duration::from_secs(SECS_PER_ONE_DAY),
+    ).map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     Ok(Response::with((
         status::Ok,
         JsonResponse::json(json!({
             "access_token": token,
             "token_type": "bearer",
-            "expires_in": expires_in,
+            "expires_in": SECS_PER_ONE_DAY,
         })),
     )))
 }
