@@ -24,9 +24,9 @@ pub fn create_api_handler() -> Chain {
     router.delete("/projects/:id", projects::remove_project, "remove_project");
 
     router.get(
-        "/projects/:id/repository",
-        repository::get_file_list,
-        "get_repository_file_list",
+        "/projects/:id/repository/tree",
+        repository::show_tree,
+        "show_tree",
     );
 
     let mut chain = Chain::new(router);

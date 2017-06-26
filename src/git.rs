@@ -76,27 +76,17 @@ impl Repository {
     fn collect_tree_object(&self, tree: &git2::Tree) -> Vec<JsonValue> {
         tree.into_iter()
             .filter_map(|entry| {
-                let kind = entry.kind().unwrap();
-                match kind {
-                    git2::ObjectType::Blob => {
-                        Some(json!({
-                        "name": entry.name().unwrap(),
-                        "filemode": format!("{:06o}", entry.filemode()),
-                    }))
-                    }
-                    git2::ObjectType::Tree => {
-                        let child = self.collect_tree_object(&entry
-                            .to_object(&self.inner)
-                            .map(|o| o.into_tree().ok().unwrap())
-                            .unwrap());
-                        Some(json!({
-                        "name": entry.name().unwrap(),
-                        "filemode": format!("{:06o}", entry.filemode()),
-                        "child": child,
-                    }))
-                    }
-                    _ => None,
-                }
+                let type_ = match entry.kind().unwrap() {
+                    git2::ObjectType::Blob => "blob",
+                    git2::ObjectType::Tree => "tree",
+                    _ => return None,
+                };
+                Some(json!({
+                    "id": entry.id().to_string(),
+                    "name": entry.name().unwrap(),
+                    "type": type_,
+                    "filemode": format!("{:06o}", entry.filemode()),
+                }))
             })
             .collect()
     }

@@ -5,7 +5,8 @@ use router::Router;
 use api::ApiError;
 use app::App;
 
-pub fn get_file_list(req: &mut Request) -> IronResult<Response> {
+// TODO: use `git ls-tree`
+pub fn show_tree(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
