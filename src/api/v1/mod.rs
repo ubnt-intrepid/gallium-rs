@@ -13,10 +13,23 @@ use iron_json_response::JsonResponseMiddleware;
 pub fn create_api_handler() -> Chain {
     let mut router = Router::new();
 
-    router.post("/oauth/token", auth::token_endpoint, "auth/token_endpoint");
+    router.get(
+        "/oauth/authorize",
+        auth::authorize_endpoint,
+        "auth/authorize",
+    );
+    router.post("/oauth/token", auth::token_endpoint, "auth/token");
 
-    router.get("/oauth_apps", oauth_apps::get_app_list, "oauth_apps/get_app_list");
-    router.post("/oauth_apps", oauth_apps::register_app, "oauth_apps/register_application");
+    router.get(
+        "/oauth_apps",
+        oauth_apps::get_app_list,
+        "oauth_apps/get_app_list",
+    );
+    router.post(
+        "/oauth_apps",
+        oauth_apps::register_app,
+        "oauth_apps/register_application",
+    );
 
     router.get("/keys", keys::get_keys, "keys/get_keys");
     router.get("/keys/:id", keys::get_key, "keys/get_key");

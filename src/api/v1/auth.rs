@@ -3,9 +3,10 @@ use std::io;
 use std::time::Duration;
 use iron::prelude::*;
 use iron::status;
-use iron::headers::ContentType;
+use iron::headers::{ContentType, Location};
 use iron::mime::{Mime, TopLevel, SubLevel};
-use iron::url::form_urlencoded;
+use iron::modifiers::Header;
+use iron::url::{Url, form_urlencoded};
 use iron_json_response::JsonResponse;
 use app::App;
 use error::AppError;
@@ -16,8 +17,124 @@ use schema::oauth_apps;
 
 const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
 
+// Endpoint for Authorization Request
+// See https://tools.ietf.org/html/rfc6749#section-4.1.
+pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
+    let queries = req.url.query().ok_or_else(|| {
+        IronError::new(AppError::from("OAuth"), (
+            status::BadRequest,
+            JsonResponse::json(json!({
+                "error": "invalid_request",
+                "error_description": "The request must set parameters as the query component of URL",
+            })),
+        ))
+    })?;
 
-// See https://tools.ietf.org/html/rfc6749#section-4.3
+    let (mut response_type, mut client_id, mut redirect_uri, mut scope, mut state) =
+        (None, None, None, None, None);
+    for (key, val) in form_urlencoded::parse(queries.as_bytes()) {
+        match key.borrow() as &str {
+            "response_type" => response_type = Some(val),
+            "client_id" => client_id = Some(val),
+            "redirect_uri" => redirect_uri = Some(val),
+            "scope" => scope = Some(val),
+            "state" => state = Some(val),
+            _ => (),
+        }
+    }
+
+    match response_type.as_ref().map(|s| s.borrow() as &str) {
+        Some("code") => (),
+        Some(ref s) => {
+            return Err(IronError::new(AppError::from("OAuth"), (
+                status::BadRequest,
+                JsonResponse::json(json!({
+                    "error": "unsupported_response_type",
+                    "error_description": format!("`{}` is not a valid response_type", (s.borrow() as &str)),
+                })),
+            )))
+        }
+        None => {
+            return Err(IronError::new(AppError::from("OAuth"), (
+                status::BadRequest,
+                JsonResponse::json(json!({
+                    "error": "invalid_request",
+                    "error_description": "`response_type` is required",
+                })),
+            )))
+        }
+    }
+
+    let client_id = client_id.ok_or_else(|| {
+        IronError::new(AppError::from("OAuth"), (
+            status::BadRequest,
+            JsonResponse::json(json!({
+                "error": "invalid_request",
+                "error_description": "`client_id` is required",
+            })),
+        ))
+    })?;
+
+    // TODO: check scope
+    let _scope = scope;
+
+    // TODO: redirect_uri を OAuthApp のフィールドに追加する
+    let redirect_uri = redirect_uri.unwrap_or_else(|| "http://example.com/".into());
+
+    let app = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, (
+            status::InternalServerError,
+            JsonResponse::json(json!({
+                "error": "server_error",
+            })),
+        ))
+    })?;
+    let oauth_app = oauth_apps::table
+        .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
+        .get_result::<OAuthApp>(&*conn)
+        .optional()
+        .map_err(|err| {
+            IronError::new(err, (
+                status::InternalServerError,
+                JsonResponse::json(json!({
+                    "error": "server_error",
+                })),
+            ))
+        })?;
+    if oauth_app.is_none() {
+        return Err(IronError::new(AppError::from("OAuth"), (
+            status::Unauthorized,
+            JsonResponse::json(json!({
+                "error": "unauthorized_client",
+            })),
+        )));
+    }
+
+    // TODO: generate authorization code
+    let code = "xxxx".to_owned();
+
+    // Build redirect URL
+    let queries = {
+        let mut queries = form_urlencoded::Serializer::new(String::new());
+        queries.append_pair("code", &code);
+        if let Some(state) = state {
+            queries.append_pair("state", state.borrow());
+        }
+        queries.finish()
+    };
+    let mut location = Url::parse(redirect_uri.borrow()).unwrap();
+    location.set_query(Some(queries.as_str()));
+
+    Ok(Response::with((
+        status::Found,
+        Header(Location(location.as_str().to_owned())),
+    )))
+}
+
+// Endpoiint for Access Token Request
+// See https://tools.ietf.org/html/rfc6749#section-4.1 and
+//     https://tools.ietf.org/html/rfc6749#section-4.3.
 pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, _))) => (),
