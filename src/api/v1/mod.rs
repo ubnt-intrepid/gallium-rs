@@ -18,6 +18,7 @@ pub fn create_api_handler() -> Chain {
         auth::authorize_endpoint,
         "auth/authorize",
     );
+    router.get("/oauth/approval", auth::approval_endpoint, "auth/approval");
     router.post("/oauth/token", auth::token_endpoint, "auth/token");
 
     router.get(

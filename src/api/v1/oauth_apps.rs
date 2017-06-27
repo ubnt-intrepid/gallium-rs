@@ -49,6 +49,7 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]
     struct Params {
         name: String,
+        redirect_uri: Option<String>,
     }
     let params = req.get::<Struct<Params>>()
         .ok()
@@ -59,6 +60,7 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
     let new_app = NewOAuthApp {
         name: &params.name,
         client_id: &client_id,
+        redirect_uri: params.redirect_uri.as_ref().map(|s| s.as_str()),
     };
     let app = req.extensions.get::<App>().unwrap();
     let conn = app.get_db_conn().map_err(|err| {

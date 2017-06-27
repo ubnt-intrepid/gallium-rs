@@ -8,6 +8,7 @@ pub struct OAuthApp {
     pub name: String,
     pub created_at: NaiveDateTime,
     pub client_id: String,
+    pub redirect_uri: String,
 }
 
 #[derive(Insertable)]
@@ -15,4 +16,5 @@ pub struct OAuthApp {
 pub struct NewOAuthApp<'a> {
     pub name: &'a str,
     pub client_id: &'a str,
+    pub redirect_uri: Option<&'a str>,
 }

@@ -27,6 +27,7 @@ extern crate uuid;
 #[macro_use]
 extern crate error_chain;
 extern crate ring;
+extern crate url;
 
 pub mod app;
 pub mod config;
