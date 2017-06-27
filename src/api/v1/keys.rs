@@ -88,12 +88,11 @@ pub(super) fn add_key(req: &mut Request) -> IronResult<Response> {
     let conn = app.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let inserted_key: EncodablePublicKey =
-        insert(&new_key)
-            .into(public_keys::table)
-            .get_result::<PublicKey>(&*conn)
-            .map(Into::into)
-            .map_err(|err| IronError::new(err, status::InternalServerError))?;
+    let inserted_key: EncodablePublicKey = insert(&new_key)
+        .into(public_keys::table)
+        .get_result::<PublicKey>(&*conn)
+        .map(Into::into)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     Ok(Response::with(
         (status::Created, JsonResponse::json(&inserted_key)),

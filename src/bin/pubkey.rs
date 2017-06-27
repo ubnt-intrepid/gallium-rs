@@ -95,17 +95,13 @@ fn parse_ssh_command(s: &str) -> Result<(String, String, String), String> {
 
     // validate action
     let action = &command[0];
-    if action != "git-receive-pack" && action != "git-upload-pack" &&
-        action != "git-upload-archive"
-    {
+    if action != "git-receive-pack" && action != "git-upload-pack" && action != "git-upload-archive" {
         return Err("Permission denied".to_string());
     }
 
     // validate repository
     let repository = &command[1];
-    if Path::new(repository).is_absolute() || repository.starts_with("./") ||
-        repository.starts_with("../")
-    {
+    if Path::new(repository).is_absolute() || repository.starts_with("./") || repository.starts_with("../") {
         return Err("incorrect repository path".to_string());
     }
 

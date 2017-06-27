@@ -54,11 +54,7 @@ impl App {
         Ok(())
     }
 
-    pub fn open_repository(
-        &self,
-        user: &str,
-        project: &str,
-    ) -> AppResult<(User, Project, Repository)> {
+    pub fn open_repository(&self, user: &str, project: &str) -> AppResult<(User, Project, Repository)> {
         let conn = self.get_db_conn()?;
         let (user, project) = users::table
             .inner_join(projects::table)
@@ -76,10 +72,7 @@ impl App {
         Ok((user, project, repo))
     }
 
-    pub fn open_repository_from_id(
-        &self,
-        id: i32,
-    ) -> AppResult<Option<(User, Project, Repository)>> {
+    pub fn open_repository_from_id(&self, id: i32) -> AppResult<Option<(User, Project, Repository)>> {
         let conn = self.get_db_conn()?;
         let result = users::table
             .inner_join(projects::table)
@@ -112,12 +105,7 @@ impl App {
         Ok(user)
     }
 
-    pub fn generate_jwt(
-        &self,
-        user: &User,
-        scope: Option<&[&str]>,
-        lifetime: Duration,
-    ) -> AppResult<String> {
+    pub fn generate_jwt(&self, user: &User, scope: Option<&[&str]>, lifetime: Duration) -> AppResult<String> {
         let iss = "http://localhost:3000/";
         let aud = vec!["http://localhost:3000/"];
 
@@ -149,6 +137,30 @@ impl App {
             &Default::default(),
         ).map_err(Into::into)
             .map(|token_data| token_data.claims)
+    }
+
+    // TODO: use different secret key
+    pub fn generate_authorization_code(&self, scope: Option<Vec<&str>>) -> AppResult<String> {
+        let iss = "http://localhost:3000/";
+        let aud = vec!["http://localhost:3000/"];
+
+        let jti = Uuid::new_v4();
+        let iat = UTC::now();
+        let claims = json!({
+            "jti": jti.to_string(),
+            "iss": iss,
+            "aud": aud,
+            "sub": "authorization_code",
+            "iat": iat.timestamp(),
+            "nbf": iat.timestamp(),
+            "exp": iat.timestamp() + (60 * 10),
+            "scope": scope,
+        });
+        jsonwebtoken::encode(
+            &Default::default(),
+            &claims,
+            self.config.jwt_secret.as_bytes(),
+        ).map_err(Into::into)
     }
 }
 

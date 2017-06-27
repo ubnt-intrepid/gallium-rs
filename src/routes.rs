@@ -1,8 +1,7 @@
 use std::io::Read;
 use iron::prelude::*;
 use iron::status;
-use iron::headers::{Authorization, Basic, CacheControl, CacheDirective, Encoding, ContentEncoding,
-                    ContentType};
+use iron::headers::{Authorization, Basic, CacheControl, CacheDirective, Encoding, ContentEncoding, ContentType};
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
 use mount::Mount;
@@ -108,10 +107,9 @@ fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     match service {
         "receive-pack" => {
             let (username, password) = get_basic_auth_param(req)?;
-            let auth_user =
-                app.authenticate(username, password)
-                    .map_err(|err| IronError::new(err, status::InternalServerError))?
-                    .ok_or_else(|| IronError::new(AppError::from(""), status::Unauthorized))?;
+            let auth_user = app.authenticate(username, password)
+                .map_err(|err| IronError::new(err, status::InternalServerError))?
+                .ok_or_else(|| IronError::new(AppError::from(""), status::Unauthorized))?;
 
             if project.user_id != auth_user.id {
                 return Err(IronError::new(AppError::from(""), status::Unauthorized));

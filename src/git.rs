@@ -91,11 +91,7 @@ impl Repository {
             .collect()
     }
 
-    pub fn run_rpc_command<'a>(
-        &self,
-        service: &str,
-        stdin: Option<&mut Box<Read + 'a>>,
-    ) -> io::Result<Vec<u8>> {
+    pub fn run_rpc_command<'a>(&self, service: &str, stdin: Option<&mut Box<Read + 'a>>) -> io::Result<Vec<u8>> {
         let args: Vec<&str> = if stdin.is_some() {
             vec![service, "--stateless-rpc", "."]
         } else {
