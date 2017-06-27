@@ -12,7 +12,9 @@ use error::AppError;
 
 const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
 
-pub(super) fn generate_token(req: &mut Request) -> IronResult<Response> {
+
+// See https://tools.ietf.org/html/rfc6749#section-4.3
+pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, _))) => (),
         _ => {
