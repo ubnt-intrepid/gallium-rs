@@ -74,6 +74,7 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
         email_address: String,
         password: String,
         screen_name: Option<String>,
+        is_admin: Option<bool>,
     }
     let params = req.get::<Struct<Params>>()
         .ok()
@@ -88,6 +89,7 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
         email_address: &params.email_address,
         bcrypt_hash: &bcrypt_hash,
         screen_name: params.screen_name.as_ref().map(|s| s.as_str()),
+        is_admin: params.is_admin.clone(),
     };
 
     let app = req.extensions.get::<App>().unwrap();

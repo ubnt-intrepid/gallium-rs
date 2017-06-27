@@ -31,6 +31,7 @@ pub struct User {
     pub bcrypt_hash: String,
     pub created_at: NaiveDateTime,
     pub screen_name: String,
+    pub is_admin: bool,
 }
 
 impl typemap::Key for User {
@@ -45,6 +46,7 @@ pub struct NewUser<'a> {
     pub email_address: &'a str,
     pub bcrypt_hash: &'a str,
     pub screen_name: Option<&'a str>,
+    pub is_admin: Option<bool>,
 }
 
 

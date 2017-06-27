@@ -28,5 +28,6 @@ table! {
         bcrypt_hash -> Text,
         created_at -> Timestamp,
         screen_name -> Text,
+        is_admin -> Bool,
     }
 }
