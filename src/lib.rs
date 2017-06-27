@@ -26,15 +26,17 @@ extern crate jsonwebtoken;
 extern crate uuid;
 #[macro_use]
 extern crate error_chain;
+extern crate ring;
 
 pub mod app;
 pub mod config;
+pub mod crypto;
 pub mod error;
 pub mod git;
 pub mod middleware;
 pub mod models;
-pub mod schema;
 pub mod routes;
+pub mod schema;
 
 pub mod api {
     #[path = "v1/mod.rs"]
