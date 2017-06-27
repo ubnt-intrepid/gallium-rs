@@ -1,9 +1,9 @@
-mod application;
-mod project;
-mod public_key;
-mod user;
+mod oauth_apps;
+mod projects;
+mod public_keys;
+mod users;
 
-pub use self::application::{Application, NewApplication};
-pub use self::project::{Project, NewProject};
-pub use self::public_key::{PublicKey, NewPublicKey};
-pub use self::user::{User, NewUser};
+pub use self::oauth_apps::{OAuthApp, NewOAuthApp};
+pub use self::projects::{Project, NewProject};
+pub use self::public_keys::{PublicKey, NewPublicKey};
+pub use self::users::{User, NewUser};

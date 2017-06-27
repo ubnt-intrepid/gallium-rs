@@ -1,5 +1,5 @@
 use chrono::NaiveDateTime;
-use super::user::User;
+use super::users::User;
 use schema::public_keys;
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]

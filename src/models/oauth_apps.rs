@@ -1,8 +1,9 @@
-use schema::applications;
+use schema::oauth_apps;
 use chrono::NaiveDateTime;
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
-pub struct Application {
+#[table_name = "oauth_apps"]
+pub struct OAuthApp {
     pub id: i32,
     pub name: String,
     pub created_at: NaiveDateTime,
@@ -10,8 +11,8 @@ pub struct Application {
 }
 
 #[derive(Insertable)]
-#[table_name = "applications"]
-pub struct NewApplication<'a> {
+#[table_name = "oauth_apps"]
+pub struct NewOAuthApp<'a> {
     pub name: &'a str,
     pub client_id: &'a str,
 }

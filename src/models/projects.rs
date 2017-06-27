@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 use schema::projects;
-use super::user::User;
+use super::users::User;
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[belongs_to(User)]

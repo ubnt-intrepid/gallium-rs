@@ -8,8 +8,8 @@ use diesel::prelude::*;
 use diesel::insert;
 
 use app::App;
-use models::{Application, NewApplication};
-use schema::applications;
+use models::{OAuthApp, NewOAuthApp};
+use schema::oauth_apps;
 
 #[derive(Serialize)]
 pub struct EncodableApplication {
@@ -19,8 +19,8 @@ pub struct EncodableApplication {
     pub client_id: String,
 }
 
-impl From<Application> for EncodableApplication {
-    fn from(app: Application) -> Self {
+impl From<OAuthApp> for EncodableApplication {
+    fn from(app: OAuthApp) -> Self {
         EncodableApplication {
             id: app.id,
             name: app.name,
@@ -35,8 +35,8 @@ pub(super) fn get_app_list(req: &mut Request) -> IronResult<Response> {
     let conn = app.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let apps: Vec<_> = applications::table
-        .load::<Application>(&*conn)
+    let apps: Vec<_> = oauth_apps::table
+        .load::<OAuthApp>(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
         .map(EncodableApplication::from)
@@ -56,7 +56,7 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
         .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
 
     let client_id = generate_sha1_hash();
-    let new_app = NewApplication {
+    let new_app = NewOAuthApp {
         name: &params.name,
         client_id: &client_id,
     };
@@ -65,8 +65,8 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
     let oauth_app: EncodableApplication = insert(&new_app)
-        .into(applications::table)
-        .get_result::<Application>(&*conn)
+        .into(oauth_apps::table)
+        .get_result::<OAuthApp>(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into();
 
