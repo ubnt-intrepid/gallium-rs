@@ -10,6 +10,10 @@ use iron_json_response::JsonResponse;
 use app::App;
 use error::AppError;
 
+use diesel::prelude::*;
+use models::OAuthApp;
+use schema::oauth_apps;
+
 const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
 
 
@@ -32,7 +36,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    let (mut username, mut password, mut scope) = (None, None, None);
+    let (mut username, mut password, mut scope, mut client_id) = (None, None, None, None);
     for (key, val) in form_urlencoded::parse(&body) {
         match key.borrow() as &str {
             "grant_type" => {
@@ -61,11 +65,12 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
             "username" => username = Some(val),
             "password" => password = Some(val),
             "scope" => scope = Some(val),
+            "client_id" => client_id = Some(val),
             _ => (),
         }
     }
-    let (username, password) = match (username, password) {
-        (Some(u), Some(p)) => (u, p),
+    let (username, password, client_id) = match (username, password, client_id) {
+        (Some(u), Some(p), Some(c)) => (u, p, c),
         _ => {
             return Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
@@ -78,13 +83,31 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
 
     let app = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+
+    let oauth_app = oauth_apps::table
+        .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
+        .get_result::<OAuthApp>(&*conn)
+        .optional()
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+    if oauth_app.is_none() {
+        return Err(IronError::new(AppError::from("OAuth"), (
+            status::Unauthorized,
+            JsonResponse::json(json!({
+                "error": "unauthorized_client",
+            })),
+        )));
+    }
+
     let user = app.authenticate(&username, &password)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| {
             IronError::new(AppError::from("OAuth"), (
                 status::Unauthorized,
                 JsonResponse::json(json!({
-                    "error": "unauthorized_client",
+                    "error": "access_denied",
                 })),
             ))
         })?;
