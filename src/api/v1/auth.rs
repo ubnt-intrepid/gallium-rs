@@ -9,11 +9,14 @@ use iron::modifiers::Header;
 use url::{Url, form_urlencoded};
 use iron_json_response::JsonResponse;
 use app::App;
-use error::AppError;
+use error::{AppResult, AppError};
+use uuid::Uuid;
+use chrono::UTC;
+use jsonwebtoken;
 
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
-use models::OAuthApp;
+use models::{User, OAuthApp};
 use schema::oauth_apps;
 
 const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
@@ -133,19 +136,22 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
     let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
 
     let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
-    let code = app.generate_jwt(
+    let code = generate_authorization_code(
         &user,
+        client_id.borrow(),
+        redirect_uri.borrow(),
         scope.as_ref().map(|s| s.as_slice()),
         Duration::from_secs(10 * 60),
+        app.config().jwt_secret.as_bytes(),
     ).map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
+        IronError::new(err, (
+            status::InternalServerError,
+            JsonResponse::json(json!({
                 "error": "server_error",
                 "error_description": "Failed to generate authorization code",
             })),
-            ))
-        })?;
+        ))
+    })?;
 
     // Build redirect URL
     let mut location = Url::parse(redirect_uri.borrow()).unwrap();
@@ -271,7 +277,55 @@ fn authorization_code_grant(
     redirect_uri: Option<&str>,
     client_id: Option<&str>,
 ) -> IronResult<Response> {
-    Ok(Response::with(status::Ok))
+    let claims: JWTClaims = validate_authorization_code(code, app.config().jwt_secret.as_bytes())
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+
+    if let Some(redirect_uri) = redirect_uri {
+        if claims.redirect_uri != redirect_uri {
+            return Err(IronError::new(AppError::from("OAuth"), (
+                status::Unauthorized,
+                JsonResponse::json(json!({
+                    "error": "unauthorized_client",
+                })),
+            )));
+        }
+    }
+
+    if let Some(client_id) = client_id {
+        if claims.client_id != client_id {
+            return Err(IronError::new(AppError::from("OAuth"), (
+                status::Unauthorized,
+                JsonResponse::json(json!({
+                    "error": "unauthorized_client",
+                })),
+            )));
+        }
+        let oauth_app = oauth_apps::table
+            .filter(oauth_apps::dsl::client_id.eq(client_id))
+            .get_result::<OAuthApp>(conn)
+            .optional()
+            .map_err(|err| IronError::new(err, status::InternalServerError))?;
+        if oauth_app.is_none() {
+            return Err(IronError::new(AppError::from("OAuth"), (
+                status::Unauthorized,
+                JsonResponse::json(json!({
+                    "error": "unauthorized_client",
+                })),
+            )));
+        }
+    }
+
+    // TODO: generate access_token
+    let token = String::new();
+
+    Ok(Response::with((
+        status::Ok,
+        JsonResponse::json(json!({
+            "access_token": token,
+            "token_type": "bearer",
+            "expires_in": SECS_PER_ONE_DAY,
+        })),
+    )))
 }
 
 fn resource_owner_password_credentials_grant(
@@ -296,7 +350,7 @@ fn resource_owner_password_credentials_grant(
         )));
     }
 
-    let user = app.authenticate(&username, &password)
+    let _user = app.authenticate(&username, &password)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| {
             IronError::new(AppError::from("OAuth"), (
@@ -307,11 +361,9 @@ fn resource_owner_password_credentials_grant(
             ))
         })?;
 
-    let token = app.generate_jwt(
-        &user,
-        scope.as_ref().map(|s| s.as_slice()),
-        Duration::from_secs(SECS_PER_ONE_DAY),
-    ).map_err(|err| IronError::new(err, status::InternalServerError))?;
+    // TODO: generate access_token
+    let _scope = scope;
+    let token = "".to_owned();
 
     Ok(Response::with((
         status::Ok,
@@ -321,4 +373,49 @@ fn resource_owner_password_credentials_grant(
             "expires_in": SECS_PER_ONE_DAY,
         })),
     )))
+}
+
+
+
+#[derive(Debug, Deserialize)]
+pub struct JWTClaims {
+    pub user_id: i32,
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub scope: Vec<String>,
+}
+
+fn generate_authorization_code(
+    user: &User,
+    client_id: &str,
+    redirect_uri: &str,
+    scope: Option<&[&str]>,
+    lifetime: Duration,
+    secret: &[u8],
+) -> AppResult<String> {
+    let iss = "http://localhost:3000/";
+    let aud = vec!["http://localhost:3000/"];
+
+    let jti = Uuid::new_v4();
+    let iat = UTC::now();
+    let claims = json!({
+            "jti": jti.to_string(),
+            "iss": iss,
+            "aud": aud,
+            "sub": "access_token",
+            "iat": iat.timestamp(),
+            "nbf": iat.timestamp(),
+            "exp": iat.timestamp() + lifetime.as_secs() as i64,
+            "user_id": user.id,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": scope,
+        });
+    jsonwebtoken::encode(&Default::default(), &claims, secret).map_err(Into::into)
+}
+
+fn validate_authorization_code(token: &str, secret: &[u8]) -> AppResult<JWTClaims> {
+    jsonwebtoken::decode(token, secret, &Default::default())
+        .map_err(Into::into)
+        .map(|token_data| token_data.claims)
 }

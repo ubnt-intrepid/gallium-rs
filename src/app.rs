@@ -1,5 +1,4 @@
 use bcrypt;
-use chrono::UTC;
 use std::path::PathBuf;
 use std::sync::Arc;
 use iron::{Request, IronResult, BeforeMiddleware};
@@ -13,20 +12,10 @@ use models::{User, Project};
 use schema::{users, projects};
 use git::Repository;
 use error::AppResult;
-use jsonwebtoken;
-use uuid::Uuid;
-use std::time::Duration;
 
 type DbPool = Pool<ConnectionManager<PgConnection>>;
 type PooledDbConnection = PooledConnection<ConnectionManager<PgConnection>>;
 
-
-#[derive(Debug, Deserialize)]
-pub struct JWTClaims {
-    pub user_id: i32,
-    pub username: String,
-    pub scope: Vec<String>,
-}
 
 pub struct App {
     config: Config,
@@ -38,6 +27,10 @@ impl App {
         let manager = ConnectionManager::new(config.database_url.as_str());
         let db_pool = Pool::new(Default::default(), manager)?;
         Ok(App { config, db_pool })
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn get_db_conn(&self) -> Result<PooledDbConnection, GetTimeout> {
@@ -103,64 +96,6 @@ impl App {
                 if verified { Some(user) } else { None }
             });
         Ok(user)
-    }
-
-    pub fn generate_jwt(&self, user: &User, scope: Option<&[&str]>, lifetime: Duration) -> AppResult<String> {
-        let iss = "http://localhost:3000/";
-        let aud = vec!["http://localhost:3000/"];
-
-        let jti = Uuid::new_v4();
-        let iat = UTC::now();
-        let claims = json!({
-            "jti": jti.to_string(),
-            "iss": iss,
-            "aud": aud,
-            "sub": "access_token",
-            "iat": iat.timestamp(),
-            "nbf": iat.timestamp(),
-            "exp": iat.timestamp() + lifetime.as_secs() as i64,
-            "user_id": user.id,
-            "username": user.name,
-            "scope": scope,
-        });
-        jsonwebtoken::encode(
-            &Default::default(),
-            &claims,
-            self.config.jwt_secret.as_bytes(),
-        ).map_err(Into::into)
-    }
-
-    pub fn validate_jwt(&self, token: &str) -> AppResult<JWTClaims> {
-        jsonwebtoken::decode(
-            token,
-            self.config.jwt_secret.as_bytes(),
-            &Default::default(),
-        ).map_err(Into::into)
-            .map(|token_data| token_data.claims)
-    }
-
-    // TODO: use different secret key
-    pub fn generate_authorization_code(&self, scope: Option<Vec<&str>>) -> AppResult<String> {
-        let iss = "http://localhost:3000/";
-        let aud = vec!["http://localhost:3000/"];
-
-        let jti = Uuid::new_v4();
-        let iat = UTC::now();
-        let claims = json!({
-            "jti": jti.to_string(),
-            "iss": iss,
-            "aud": aud,
-            "sub": "authorization_code",
-            "iat": iat.timestamp(),
-            "nbf": iat.timestamp(),
-            "exp": iat.timestamp() + (60 * 10),
-            "scope": scope,
-        });
-        jsonwebtoken::encode(
-            &Default::default(),
-            &claims,
-            self.config.jwt_secret.as_bytes(),
-        ).map_err(Into::into)
     }
 }
 
