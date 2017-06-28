@@ -7,6 +7,7 @@ table! {
         created_at -> Timestamp,
         client_id -> Varchar,
         redirect_uri -> Text,
+        client_secret -> Varchar,
     }
 }
 

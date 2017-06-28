@@ -25,6 +25,16 @@ pub fn create_api_handler() -> Chain {
         oauth_apps::get_app_list,
         "oauth_apps/get_app_list",
     );
+    router.get(
+        "/oauth_apps/:id",
+        oauth_apps::get_client,
+        "oauth_apps/get_client",
+    );
+    router.delete(
+        "/oauth_apps/:id",
+        oauth_apps::delete_client,
+        "oauth_apps/delete_client",
+    );
     router.post(
         "/oauth_apps",
         oauth_apps::register_app,
