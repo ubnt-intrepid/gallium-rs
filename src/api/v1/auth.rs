@@ -25,7 +25,8 @@ header! {
 }
 
 // Endpoint for Authorization Request
-// See https://tools.ietf.org/html/rfc6749#section-4.1.
+// * https://tools.ietf.org/html/rfc6749#section-4.1.1
+// * https://tools.ietf.org/html/rfc6749#section-4.2.1
 pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
     let (username, password) = match req.headers.get::<Authorization<Basic>>() {
         Some(&Authorization(Basic {
@@ -56,65 +57,66 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         }
     }
 
+    let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
+
+    let app = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, (
+            status::InternalServerError,
+            JsonResponse::json(json!({
+                "error": "server_error",
+            })),
+        ))
+    })?;
+
+    let user = app.authenticate(username, password)
+        .map_err(|err| {
+            IronError::new(err, (
+                status::InternalServerError,
+                JsonResponse::json(json!({
+                    "error": "server_error",
+                })),
+            ))
+        })?
+        .ok_or_else(|| {
+            IronError::new(AppError::from("OAuth"), (status::Unauthorized))
+        })?;
+
+    let client_id = client_id.ok_or_else(|| {
+        IronError::new(AppError::from("OAuth"), (
+            status::BadRequest,
+            JsonResponse::json(json!({
+                "error": "invalid_request",
+                "error_description": "`client_id` is required",
+            })),
+        ))
+    })?;
+    let oauth_app = oauth_apps::table
+        .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
+        .get_result::<OAuthApp>(&*conn)
+        .optional()
+        .map_err(|err| {
+            IronError::new(err, (
+                status::InternalServerError,
+                JsonResponse::json(json!({
+                    "error": "server_error",
+                })),
+            ))
+        })?
+        .ok_or_else(|| {
+            IronError::new(AppError::from("OAuth"), (
+                status::Unauthorized,
+                JsonResponse::json(json!({
+                    "error": "unauthorized_client",
+                })),
+            ))
+        })?;
+
+    // redirect_uri のデフォルト値はどうすべきか？
+    let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
+
     match response_type.as_ref().map(|s| s.borrow() as &str) {
         Some("code") => {
-            let client_id = client_id.ok_or_else(|| {
-                IronError::new(AppError::from("OAuth"), (
-                    status::BadRequest,
-                    JsonResponse::json(json!({
-                        "error": "invalid_request",
-                        "error_description": "`client_id` is required",
-                    })),
-                ))
-            })?;
-
-            let app = req.extensions.get::<App>().unwrap();
-            let conn = app.get_db_conn().map_err(|err| {
-                IronError::new(err, (
-                    status::InternalServerError,
-                    JsonResponse::json(json!({
-                        "error": "server_error",
-                    })),
-                ))
-            })?;
-            let oauth_app = oauth_apps::table
-                .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
-                .get_result::<OAuthApp>(&*conn)
-                .optional()
-                .map_err(|err| {
-                    IronError::new(err, (
-                        status::InternalServerError,
-                        JsonResponse::json(json!({
-                            "error": "server_error",
-                        })),
-                    ))
-                })?
-                .ok_or_else(|| {
-                    IronError::new(AppError::from("OAuth"), (
-                        status::Unauthorized,
-                        JsonResponse::json(json!({
-                            "error": "unauthorized_client",
-                        })),
-                    ))
-                })?;
-
-            let user = app.authenticate(username, password)
-                .map_err(|err| {
-                    IronError::new(err, (
-                        status::InternalServerError,
-                        JsonResponse::json(json!({
-                            "error": "server_error",
-                        })),
-                    ))
-                })?
-                .ok_or_else(|| {
-                    IronError::new(AppError::from("OAuth"), (status::Unauthorized))
-                })?;
-
-            // redirect_uri のデフォルト値はどうすべきか？
-            let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
-
-            let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
             let code = generate_authorization_code(
                 &user,
                 client_id.borrow(),
@@ -147,6 +149,28 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
                 Header(Location(location.as_str().to_owned())),
             )))
         }
+
+        Some("token") => {
+            // TODO: generate token
+            let token = String::new();
+
+            // Build redirect URL
+            let mut location = Url::parse(redirect_uri.borrow()).unwrap();
+            {
+                let mut queries = location.query_pairs_mut();
+                queries.append_pair("access_token", &token);
+                queries.append_pair("token_type", "bearer");
+                queries.append_pair("expires_in", &SECS_PER_ONE_DAY.to_string());
+                if let Some(state) = state {
+                    queries.append_pair("state", state.borrow());
+                }
+            }
+
+            Ok(Response::with((
+                status::Found,
+                Header(Location(location.as_str().to_owned())),
+            )))
+        }
         Some(ref s) => {
             Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
@@ -169,9 +193,9 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
 }
 
 // Endpoint for Access Token Request
-// * https://tools.ietf.org/html/rfc6749#section-4.1
-// * https://tools.ietf.org/html/rfc6749#section-4.3
-// * https://tools.ietf.org/html/rfc6749#section-4.4
+// * https://tools.ietf.org/html/rfc6749#section-4.1.3
+// * https://tools.ietf.org/html/rfc6749#section-4.3.3
+// * https://tools.ietf.org/html/rfc6749#section-4.4.3
 pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     let (client_id, client_secret) = match req.headers.get::<Authorization<Basic>>() {
         Some(&Authorization(Basic {
@@ -222,10 +246,6 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
 
     let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-
     let oauth_app = app.authenticate_app(client_id, client_secret)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| {
