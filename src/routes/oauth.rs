@@ -344,15 +344,16 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     ))
                 })?
         }
-        // Some("client_credentials") => {
-        //     // TODO: get user info related to client_id
-        //     let _user = 0;
-        //
-        //     // TODO: generate access_token
-        //     let _scope = scope;
-        //     let token = "".to_owned();
-        //     token
-        // }
+        Some("client_credentials") => {
+            users::table
+                .filter(users::dsl::id.eq(oauth_app.user_id))
+                .get_result::<User>(&*conn)
+                .optional()
+                .map_err(|err| IronError::new(err, status::InternalServerError))?
+                .ok_or_else(|| {
+                    IronError::new(AppError::from("OAuth"), status::Unauthorized)
+                })?
+        }
         Some(ref _s) => {
             Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,

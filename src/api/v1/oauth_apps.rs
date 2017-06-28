@@ -86,6 +86,7 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]
     struct Params {
         name: String,
+        user_id: i32,
         redirect_uri: Option<String>,
     }
     let params = req.get::<Struct<Params>>()
@@ -97,6 +98,7 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
     let client_secret = crypto::generate_sha1_random();
     let new_app = NewOAuthApp {
         name: &params.name,
+        user_id: params.user_id,
         client_id: &client_id,
         client_secret: &client_secret,
         redirect_uri: params.redirect_uri.as_ref().map(|s| s.as_str()),

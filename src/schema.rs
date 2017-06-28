@@ -18,6 +18,7 @@ table! {
         client_id -> Varchar,
         redirect_uri -> Text,
         client_secret -> Varchar,
+        user_id -> Int4,
     }
 }
 
