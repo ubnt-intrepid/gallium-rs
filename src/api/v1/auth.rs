@@ -3,7 +3,7 @@ use std::io;
 use std::time::Duration;
 use iron::prelude::*;
 use iron::status;
-use iron::headers::{ContentType, Location};
+use iron::headers::{Authorization, Basic, ContentType, Location};
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
 use url::{Url, form_urlencoded};
@@ -18,9 +18,28 @@ use schema::oauth_apps;
 
 const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
 
+header! {
+    (WWWAuthenticate, "WWW-Authenticate") => [String]
+}
+
 // Endpoint for Authorization Request
 // See https://tools.ietf.org/html/rfc6749#section-4.1.
 pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
+    let (username, password) = match req.headers.get::<Authorization<Basic>>() {
+        Some(&Authorization(Basic {
+                                ref username,
+                                password: Some(ref password),
+                            })) => (username, password),
+        _ => {
+            return Err(IronError::new(AppError::from("OAuth"), (
+                status::Unauthorized,
+                Header(WWWAuthenticate(
+                    "realm=\"Basic\"".to_owned(),
+                )),
+            )))
+        }
+    };
+
     let url: Url = req.url.clone().into();
 
     let (mut response_type, mut client_id, mut redirect_uri, mut scope, mut state) = (None, None, None, None, None);
@@ -97,31 +116,46 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
             ))
         })?;
 
+    let user = app.authenticate(username, password)
+        .map_err(|err| {
+            IronError::new(err, (
+                status::InternalServerError,
+                JsonResponse::json(json!({
+                "error": "server_error",
+            })),
+            ))
+        })?
+        .ok_or_else(|| {
+            IronError::new(AppError::from("OAuth"), (status::Unauthorized))
+        })?;
+
     // redirect_uri のデフォルト値はどうすべきか？
     let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
 
-    let scope = scope.as_ref().map(|s| s.split(" ").collect());
-    let code = app.generate_authorization_code(scope).map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
+    let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
+    let code = app.generate_jwt(
+        &user,
+        scope.as_ref().map(|s| s.as_slice()),
+        Duration::from_secs(10 * 60),
+    ).map_err(|err| {
+            IronError::new(err, (
+                status::InternalServerError,
+                JsonResponse::json(json!({
                 "error": "server_error",
                 "error_description": "Failed to generate authorization code",
             })),
-        ))
-    })?;
+            ))
+        })?;
 
     // Build redirect URL
-    let queries = {
-        let mut queries = form_urlencoded::Serializer::new(String::new());
+    let mut location = Url::parse(redirect_uri.borrow()).unwrap();
+    {
+        let mut queries = location.query_pairs_mut();
         queries.append_pair("code", &code);
         if let Some(state) = state {
             queries.append_pair("state", state.borrow());
         }
-        queries.finish()
-    };
-    let mut location = Url::parse(redirect_uri.borrow()).unwrap();
-    location.set_query(Some(queries.as_str()));
+    }
 
     Ok(Response::with((
         status::Found,
@@ -184,7 +218,8 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                 app,
                 &*conn,
                 code.borrow(),
-                redirect_uri.as_ref().map(|s| s.borrow() as &str),
+                redirect_uri.as_ref().map(|s| s.borrow()),
+                client_id.as_ref().map(|s| s.borrow()),
             )
         }
         Some("password") => {
@@ -234,6 +269,7 @@ fn authorization_code_grant(
     conn: &PgConnection,
     code: &str,
     redirect_uri: Option<&str>,
+    client_id: Option<&str>,
 ) -> IronResult<Response> {
     Ok(Response::with(status::Ok))
 }
