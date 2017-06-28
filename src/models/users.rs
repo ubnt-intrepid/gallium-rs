@@ -1,5 +1,6 @@
 use bcrypt;
 use chrono::NaiveDateTime;
+use diesel::insert;
 use diesel::prelude::*;
 use iron::typemap::Key;
 
@@ -23,16 +24,54 @@ pub struct User {
 
 #[derive(Insertable)]
 #[table_name = "users"]
-pub struct NewUser<'a> {
-    pub name: &'a str,
-    pub email_address: &'a str,
-    pub bcrypt_hash: &'a str,
-    pub screen_name: Option<&'a str>,
-    pub is_admin: Option<bool>,
+struct NewUser<'a> {
+    name: &'a str,
+    email_address: &'a str,
+    bcrypt_hash: &'a str,
+    screen_name: Option<&'a str>,
+    is_admin: Option<bool>,
 }
 
 
 impl User {
+    pub fn create(
+        db: &DB,
+        name: &str,
+        password: &str,
+        email_address: &str,
+        screen_name: Option<&str>,
+        is_admin: Option<bool>,
+    ) -> AppResult<Self> {
+        let bcrypt_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
+        let new_user = NewUser {
+            name: name,
+            email_address: email_address,
+            bcrypt_hash: &bcrypt_hash,
+            screen_name: screen_name,
+            is_admin: is_admin,
+        };
+
+        let conn = db.get_db_conn()?;
+        insert(&new_user)
+            .into(users::table)
+            .get_result::<User>(&*conn)
+            .map_err(Into::into)
+    }
+
+    pub fn load_users(db: &DB) -> AppResult<Vec<Self>> {
+        let conn = db.get_db_conn()?;
+        users::table.load::<User>(&*conn).map_err(Into::into)
+    }
+
+    pub fn find_by_id(db: &DB, id: i32) -> AppResult<Option<Self>> {
+        let conn = db.get_db_conn()?;
+        users::table
+            .filter(users::dsl::id.eq(id))
+            .get_result::<User>(&*conn)
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn authenticate(db: &DB, username: &str, password: &str) -> AppResult<Option<Self>> {
         let conn = db.get_db_conn()?;
         let user = users::table

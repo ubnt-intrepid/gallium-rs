@@ -1,17 +1,12 @@
 use bodyparser::Struct;
-use bcrypt;
-use diesel::insert;
-use diesel::prelude::*;
 use iron::prelude::*;
 use iron::status;
 use iron_json_response::JsonResponse;
 use router::Router;
 
 use error::AppError;
-use models::{User, NewUser};
-use schema::users;
-
 use db::DB;
+use models::User;
 
 
 #[derive(Serialize)]
@@ -36,15 +31,10 @@ impl From<User> for EncodableUser {
 
 pub(super) fn get_users(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-
-    let users: Vec<EncodableUser> = users::table
-        .load::<User>(&*conn)
+    let users: Vec<_> = User::load_users(db)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
-        .map(Into::into)
+        .map(EncodableUser::from)
         .collect();
 
     Ok(Response::with((status::Ok, JsonResponse::json(users))))
@@ -55,14 +45,9 @@ pub(super) fn get_user(req: &mut Request) -> IronResult<Response> {
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
     let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-
-    let user: EncodableUser = users::table
-        .filter(users::dsl::id.eq(id))
-        .get_result::<User>(&*conn)
+    let user: EncodableUser = User::find_by_id(db, id)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?
         .into();
 
     Ok(Response::with((status::Ok, JsonResponse::json(user))))
@@ -82,28 +67,16 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
         .and_then(|s| s)
         .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
 
-    let bcrypt_hash = bcrypt::hash(&params.password, bcrypt::DEFAULT_COST)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-    let new_user = NewUser {
-        name: &params.name,
-        email_address: &params.email_address,
-        bcrypt_hash: &bcrypt_hash,
-        screen_name: params.screen_name.as_ref().map(|s| s.as_str()),
-        is_admin: params.is_admin.clone(),
-    };
-
     let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-    let inserted_user: EncodableUser = insert(&new_user)
-        .into(users::table)
-        .get_result::<User>(&*conn)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .into();
+    let user = User::create(
+        db,
+        &params.name,
+        &params.password,
+        &params.email_address,
+        params.screen_name.as_ref().map(|s| s.as_str()),
+        params.is_admin.clone(),
+    ).map_err(|err| IronError::new(err, status::InternalServerError))
+        .map(EncodableUser::from)?;
 
-    Ok(Response::with(
-        (status::Created, JsonResponse::json(inserted_user)),
-    ))
+    Ok(Response::with((status::Created, JsonResponse::json(user))))
 }

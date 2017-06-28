@@ -11,5 +11,6 @@ error_chain! {
         Git2(::git2::Error);
         SerdeJson(::serde_json::Error);
         JsonWebToken(::jsonwebtoken::errors::Error);
+        Bcrypt(::bcrypt::BcryptError);
     }
 }
