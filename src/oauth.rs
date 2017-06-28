@@ -7,7 +7,8 @@ use iron::headers::{Authorization, Basic, ContentType, Location};
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
 use url::{Url, form_urlencoded};
-use iron_json_response::JsonResponse;
+use iron_json_response::{JsonResponse, JsonResponseMiddleware};
+use router::Router;
 use app::App;
 use error::{AppResult, AppError};
 use uuid::Uuid;
@@ -23,6 +24,18 @@ const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
 header! {
     (WWWAuthenticate, "WWW-Authenticate") => [String]
 }
+
+
+pub fn create_oauth_handler() -> Chain {
+    let mut router = Router::new();
+    router.get("/authorize", authorize_endpoint, "authorize");
+    router.post("/token", token_endpoint, "token");
+
+    let mut chain = Chain::new(router);
+    chain.link_after(JsonResponseMiddleware::new());
+    chain
+}
+
 
 // Endpoint for Authorization Request
 // * https://tools.ietf.org/html/rfc6749#section-4.1.1

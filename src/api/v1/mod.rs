@@ -1,4 +1,3 @@
-mod auth;
 mod error;
 mod keys;
 mod projects;
@@ -12,13 +11,6 @@ use iron_json_response::JsonResponseMiddleware;
 
 pub fn create_api_handler() -> Chain {
     let mut router = Router::new();
-
-    router.get(
-        "/oauth/authorize",
-        auth::authorize_endpoint,
-        "auth/authorize",
-    );
-    router.post("/oauth/token", auth::token_endpoint, "auth/token");
 
     router.get(
         "/oauth_apps",
