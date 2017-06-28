@@ -1,9 +1,9 @@
-mod access_tokens;
-mod oauth_apps;
-mod projects;
-mod public_keys;
-mod users;
-mod repository;
+pub mod access_tokens;
+pub mod oauth_apps;
+pub mod projects;
+pub mod public_keys;
+pub mod users;
+pub mod repository;
 
 pub use self::access_tokens::{AccessToken, NewAccessToken};
 pub use self::oauth_apps::{OAuthApp, NewOAuthApp};

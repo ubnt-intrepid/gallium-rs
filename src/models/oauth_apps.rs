@@ -1,6 +1,11 @@
-use schema::oauth_apps;
+use diesel::prelude::*;
 use chrono::NaiveDateTime;
-use super::users::User;
+
+use error::AppResult;
+use db::DB;
+use models::User;
+use schema::oauth_apps;
+
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[table_name = "oauth_apps"]
@@ -23,4 +28,21 @@ pub struct NewOAuthApp<'a> {
     pub client_id: &'a str,
     pub redirect_uri: Option<&'a str>,
     pub client_secret: &'a str,
+}
+
+
+impl OAuthApp {
+    pub fn authenticate(db: &DB, client_id: &str, client_secret: &str) -> AppResult<Option<Self>> {
+        let conn = db.get_db_conn()?;
+        let app = oauth_apps::table
+            .filter(oauth_apps::dsl::client_id.eq(client_id))
+            .get_result::<OAuthApp>(&*conn)
+            .optional()?
+            .and_then(|app| if app.client_secret == client_secret {
+                Some(app)
+            } else {
+                None
+            });
+        Ok(app)
+    }
 }

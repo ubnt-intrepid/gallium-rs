@@ -13,7 +13,8 @@ use gallium::models::{Project, PublicKey};
 use gallium::schema::public_keys;
 use gallium::config::Config;
 use gallium::db::DB;
-use gallium::app;
+use gallium::models::repository::open_repository;
+
 
 fn build_cli<'a, 'b: 'a>() -> clap::App<'a, 'b> {
     clap::App::new("pubkey")
@@ -52,7 +53,7 @@ fn access(m: &clap::ArgMatches) -> Result<(), String> {
     )?;
     let (action, user, project) = parse_ssh_command(&s)?;
 
-    let (_user, project, repo) = app::open_repository(&db, &config, &user, &project)
+    let (_user, project, repo) = open_repository(&db, &config, &user, &project)
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "Failed to open repository".to_owned())?;
 

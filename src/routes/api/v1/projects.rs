@@ -6,11 +6,11 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
 
-use error::AppError;
-use models::{Project, NewProject};
+use error::{AppResult, AppError};
+use models::{Project, NewProject, Repository};
+use models::repository;
 use schema::{users, projects};
 
-use app;
 use db::DB;
 use config::Config;
 
@@ -87,14 +87,14 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
 
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
-    if app::open_repository(db, config, &params.user, &params.name).is_ok() {
+    if repository::open_repository(db, config, &params.user, &params.name).is_ok() {
         return Err(IronError::new(
             AppError::from("The repository has already created."),
             status::Conflict,
         ));
     }
 
-    app::create_new_repository(config, &params.user, &params.name)
+    create_new_repository(config, &params.user, &params.name)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     let conn = db.get_db_conn().map_err(|err| {
@@ -133,11 +133,8 @@ pub(super) fn remove_project(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    let result = app::open_repository_from_id(db, config, id).map_err(
-        |err| {
-            IronError::new(err, status::InternalServerError)
-        },
-    )?;
+    let result = repository::open_repository_from_id(db, config, id)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
     let (_, _, repo) = match result {
         Some(r) => r,
         None => return Ok(Response::with(status::Ok)),
@@ -154,4 +151,11 @@ pub(super) fn remove_project(req: &mut Request) -> IronResult<Response> {
     Ok(Response::with(
         (status::NoContent, JsonResponse::json(json!({}))),
     ))
+}
+
+
+fn create_new_repository(config: &Config, user: &str, project: &str) -> AppResult<()> {
+    let repo_path = config.repository_path(user, project);
+    Repository::create(&repo_path)?;
+    Ok(())
 }

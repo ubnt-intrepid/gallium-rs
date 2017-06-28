@@ -17,7 +17,6 @@ use super::WWWAuthenticate;
 use crypto;
 use db::DB;
 use config::Config;
-use app;
 
 use diesel::pg::PgConnection;
 use diesel::insert;
@@ -84,7 +83,7 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         ))
     })?;
 
-    let user = app::authenticate(&db, username, password)
+    let user = User::authenticate(&db, username, password)
         .map_err(|err| {
             IronError::new(err, (
                 status::InternalServerError,
@@ -278,7 +277,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let oauth_app = app::authenticate_app(&db, client_id, client_secret)
+    let oauth_app = OAuthApp::authenticate(&db, client_id, client_secret)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| {
             IronError::new(AppError::from("OAuth"), status::Unauthorized)
@@ -335,7 +334,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     )))
                 }
             };
-            app::authenticate(&db, &username, &password)
+            User::authenticate(&db, &username, &password)
                 .map_err(|err| IronError::new(err, status::InternalServerError))?
                 .ok_or_else(|| {
                     IronError::new(AppError::from("OAuth"), (

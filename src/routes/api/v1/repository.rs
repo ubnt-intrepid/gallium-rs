@@ -4,9 +4,9 @@ use iron_json_response::JsonResponse;
 use router::Router;
 use error::AppError;
 
-use app;
 use db::DB;
 use config::Config;
+use models::repository;
 
 
 // TODO: use `git ls-tree`
@@ -16,7 +16,7 @@ pub fn show_tree(req: &mut Request) -> IronResult<Response> {
 
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
-    let (_, _, repo) = app::open_repository_from_id(db, config, id)
+    let (_, _, repo) = repository::open_repository_from_id(db, config, id)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?;
 

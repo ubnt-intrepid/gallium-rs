@@ -29,16 +29,11 @@ extern crate error_chain;
 extern crate ring;
 extern crate url;
 
-pub mod app;
 pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod error;
+pub mod middlewares;
 pub mod models;
 pub mod routes;
 pub mod schema;
-
-pub mod api {
-    #[path = "v1/mod.rs"]
-    pub mod v1;
-}

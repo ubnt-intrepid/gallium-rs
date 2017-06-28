@@ -1,6 +1,12 @@
+use bcrypt;
 use chrono::NaiveDateTime;
-use schema::{users, public_keys, projects};
+use diesel::prelude::*;
 use iron::typemap::Key;
+
+use db::DB;
+use error::AppResult;
+use schema::{users, public_keys, projects};
+
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
 #[has_many(public_keys)]
@@ -23,6 +29,22 @@ pub struct NewUser<'a> {
     pub bcrypt_hash: &'a str,
     pub screen_name: Option<&'a str>,
     pub is_admin: Option<bool>,
+}
+
+
+impl User {
+    pub fn authenticate(db: &DB, username: &str, password: &str) -> AppResult<Option<Self>> {
+        let conn = db.get_db_conn()?;
+        let user = users::table
+            .filter(users::dsl::name.eq(username))
+            .get_result::<User>(&*conn)
+            .optional()?
+            .and_then(|user| {
+                let verified = bcrypt::verify(password, &user.bcrypt_hash).unwrap_or(false);
+                if verified { Some(user) } else { None }
+            });
+        Ok(user)
+    }
 }
 
 impl Key for User {
