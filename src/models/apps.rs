@@ -32,6 +32,15 @@ pub struct NewOAuthApp<'a> {
 
 
 impl OAuthApp {
+    pub fn find_by_client_id(db: &DB, client_id: &str) -> AppResult<Option<Self>> {
+        let conn = db.get_db_conn()?;
+        apps::table
+            .filter(apps::dsl::client_id.eq(client_id))
+            .get_result::<OAuthApp>(&*conn)
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn authenticate(db: &DB, client_id: &str, client_secret: &str) -> AppResult<Option<Self>> {
         let conn = db.get_db_conn()?;
         let app = apps::table
