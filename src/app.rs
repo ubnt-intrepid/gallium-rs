@@ -8,8 +8,8 @@ use r2d2::{Pool, PooledConnection, InitializationError, GetTimeout};
 use r2d2_diesel::ConnectionManager;
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
-use models::{User, Project};
-use schema::{users, projects};
+use models::{User, Project, OAuthApp};
+use schema::{users, projects, oauth_apps};
 use git::Repository;
 use error::AppResult;
 
@@ -96,6 +96,20 @@ impl App {
                 if verified { Some(user) } else { None }
             });
         Ok(user)
+    }
+
+    pub(crate) fn authenticate_app(&self, client_id: &str, client_secret: &str) -> AppResult<Option<OAuthApp>> {
+        let conn = self.get_db_conn()?;
+        let app = oauth_apps::table
+            .filter(oauth_apps::dsl::client_id.eq(client_id))
+            .get_result::<OAuthApp>(&*conn)
+            .optional()?
+            .and_then(|app| if app.client_secret == client_secret {
+                Some(app)
+            } else {
+                None
+            });
+        Ok(app)
     }
 }
 

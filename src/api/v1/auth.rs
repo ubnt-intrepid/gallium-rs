@@ -15,7 +15,6 @@ use chrono::UTC;
 use jsonwebtoken;
 
 use diesel::prelude::*;
-use diesel::pg::PgConnection;
 use models::{User, OAuthApp};
 use schema::oauth_apps;
 
@@ -58,9 +57,98 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
     }
 
     match response_type.as_ref().map(|s| s.borrow() as &str) {
-        Some("code") => (),
+        Some("code") => {
+            let client_id = client_id.ok_or_else(|| {
+                IronError::new(AppError::from("OAuth"), (
+                    status::BadRequest,
+                    JsonResponse::json(json!({
+                        "error": "invalid_request",
+                        "error_description": "`client_id` is required",
+                    })),
+                ))
+            })?;
+
+            let app = req.extensions.get::<App>().unwrap();
+            let conn = app.get_db_conn().map_err(|err| {
+                IronError::new(err, (
+                    status::InternalServerError,
+                    JsonResponse::json(json!({
+                        "error": "server_error",
+                    })),
+                ))
+            })?;
+            let oauth_app = oauth_apps::table
+                .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
+                .get_result::<OAuthApp>(&*conn)
+                .optional()
+                .map_err(|err| {
+                    IronError::new(err, (
+                        status::InternalServerError,
+                        JsonResponse::json(json!({
+                            "error": "server_error",
+                        })),
+                    ))
+                })?
+                .ok_or_else(|| {
+                    IronError::new(AppError::from("OAuth"), (
+                        status::Unauthorized,
+                        JsonResponse::json(json!({
+                            "error": "unauthorized_client",
+                        })),
+                    ))
+                })?;
+
+            let user = app.authenticate(username, password)
+                .map_err(|err| {
+                    IronError::new(err, (
+                        status::InternalServerError,
+                        JsonResponse::json(json!({
+                            "error": "server_error",
+                        })),
+                    ))
+                })?
+                .ok_or_else(|| {
+                    IronError::new(AppError::from("OAuth"), (status::Unauthorized))
+                })?;
+
+            // redirect_uri のデフォルト値はどうすべきか？
+            let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
+
+            let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
+            let code = generate_authorization_code(
+                &user,
+                client_id.borrow(),
+                redirect_uri.borrow(),
+                scope.as_ref().map(|s| s.as_slice()),
+                Duration::from_secs(10 * 60),
+                app.config().jwt_secret.as_bytes(),
+            ).map_err(|err| {
+                IronError::new(err, (
+                    status::InternalServerError,
+                    JsonResponse::json(json!({
+                        "error": "server_error",
+                        "error_description": "Failed to generate authorization code",
+                    })),
+                ))
+            })?;
+
+            // Build redirect URL
+            let mut location = Url::parse(redirect_uri.borrow()).unwrap();
+            {
+                let mut queries = location.query_pairs_mut();
+                queries.append_pair("code", &code);
+                if let Some(state) = state {
+                    queries.append_pair("state", state.borrow());
+                }
+            }
+
+            Ok(Response::with((
+                status::Found,
+                Header(Location(location.as_str().to_owned())),
+            )))
+        }
         Some(ref s) => {
-            return Err(IronError::new(AppError::from("OAuth"), (
+            Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
                 JsonResponse::json(json!({
                     "error": "unsupported_response_type",
@@ -69,7 +157,7 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
             )))
         }
         None => {
-            return Err(IronError::new(AppError::from("OAuth"), (
+            Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
                 JsonResponse::json(json!({
                     "error": "invalid_request",
@@ -78,95 +166,6 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
             )))
         }
     }
-
-    let client_id = client_id.ok_or_else(|| {
-        IronError::new(AppError::from("OAuth"), (
-            status::BadRequest,
-            JsonResponse::json(json!({
-                "error": "invalid_request",
-                "error_description": "`client_id` is required",
-            })),
-        ))
-    })?;
-
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "error": "server_error",
-            })),
-        ))
-    })?;
-    let oauth_app = oauth_apps::table
-        .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
-        .get_result::<OAuthApp>(&*conn)
-        .optional()
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                    "error": "server_error",
-                })),
-            ))
-        })?
-        .ok_or_else(|| {
-            IronError::new(AppError::from("OAuth"), (
-                status::Unauthorized,
-                JsonResponse::json(json!({
-                    "error": "unauthorized_client",
-                })),
-            ))
-        })?;
-
-    let user = app.authenticate(username, password)
-        .map_err(|err| {
-            IronError::new(err, (
-                status::InternalServerError,
-                JsonResponse::json(json!({
-                "error": "server_error",
-            })),
-            ))
-        })?
-        .ok_or_else(|| {
-            IronError::new(AppError::from("OAuth"), (status::Unauthorized))
-        })?;
-
-    // redirect_uri のデフォルト値はどうすべきか？
-    let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
-
-    let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
-    let code = generate_authorization_code(
-        &user,
-        client_id.borrow(),
-        redirect_uri.borrow(),
-        scope.as_ref().map(|s| s.as_slice()),
-        Duration::from_secs(10 * 60),
-        app.config().jwt_secret.as_bytes(),
-    ).map_err(|err| {
-        IronError::new(err, (
-            status::InternalServerError,
-            JsonResponse::json(json!({
-                "error": "server_error",
-                "error_description": "Failed to generate authorization code",
-            })),
-        ))
-    })?;
-
-    // Build redirect URL
-    let mut location = Url::parse(redirect_uri.borrow()).unwrap();
-    {
-        let mut queries = location.query_pairs_mut();
-        queries.append_pair("code", &code);
-        if let Some(state) = state {
-            queries.append_pair("state", state.borrow());
-        }
-    }
-
-    Ok(Response::with((
-        status::Found,
-        Header(Location(location.as_str().to_owned())),
-    )))
 }
 
 // Endpoint for Access Token Request
@@ -174,7 +173,7 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
 // * https://tools.ietf.org/html/rfc6749#section-4.3
 // * https://tools.ietf.org/html/rfc6749#section-4.4
 pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
-    let (client_id, _client_secret) = match req.headers.get::<Authorization<Basic>>() {
+    let (client_id, client_secret) = match req.headers.get::<Authorization<Basic>>() {
         Some(&Authorization(Basic {
                                 ref username,
                                 password: Some(ref password),
@@ -188,8 +187,6 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
             )))
         }
     };
-
-    // TODO: authenticate client_id/client_secret
 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, _))) => (),
@@ -229,7 +226,13 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    match grant_type.as_ref().map(|s| s.borrow() as &str) {
+    let oauth_app = app.authenticate_app(client_id, client_secret)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .ok_or_else(|| {
+            IronError::new(AppError::from("OAuth"), status::Unauthorized)
+        })?;
+
+    let token = match grant_type.as_ref().map(|s| s.borrow() as &str) {
         Some("authorization_code") => {
             let code = code.ok_or_else(|| {
                 IronError::new(AppError::from("OAuth"), (
@@ -239,13 +242,33 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     })),
                 ))
             })?;
-            authorization_code_flow(
-                app,
-                &*conn,
-                code.borrow(),
-                redirect_uri.as_ref().map(|s| s.borrow()),
-                client_id,
-            )
+
+            let claims: JWTClaims = validate_authorization_code(code.borrow(), app.config().jwt_secret.as_bytes())
+                .map_err(|err| IronError::new(err, status::InternalServerError))?;
+
+            if let Some(redirect_uri) = redirect_uri {
+                if claims.redirect_uri != redirect_uri {
+                    return Err(IronError::new(AppError::from("OAuth"), (
+                        status::Unauthorized,
+                        JsonResponse::json(json!({
+                            "error": "invalid_request",
+                        })),
+                    )));
+                }
+            }
+
+            if claims.client_id != oauth_app.client_id {
+                return Err(IronError::new(AppError::from("OAuth"), (
+                    status::Unauthorized,
+                    JsonResponse::json(json!({
+                        "error": "unauthorized_client",
+                    })),
+                )));
+            }
+
+            // TODO: generate access_token
+            let token = String::new();
+            token
         }
         Some("password") => {
             let (username, password) = match (username, password) {
@@ -259,23 +282,38 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     )))
                 }
             };
-            resource_owner_password_credentials_flow(
-                app,
-                &*conn,
-                username.borrow(),
-                password.borrow(),
-                client_id.borrow(),
-                scope,
-            )
+            let _user = app.authenticate(&username, &password)
+                .map_err(|err| IronError::new(err, status::InternalServerError))?
+                .ok_or_else(|| {
+                    IronError::new(AppError::from("OAuth"), (
+                        status::Unauthorized,
+                        JsonResponse::json(json!({
+                            "error": "access_denied",
+                        })),
+                    ))
+                })?;
+
+            // TODO: generate access_token
+            let _scope = scope;
+            let token = "".to_owned();
+            token
         }
-        Some("client_credentials") => client_credentials_flow(app, &*conn, client_id.borrow(), scope),
+        Some("client_credentials") => {
+            // TODO: get user info related to client_id
+            let _user = 0;
+
+            // TODO: generate access_token
+            let _scope = scope;
+            let token = "".to_owned();
+            token
+        }
         Some(ref _s) => {
             Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
                 JsonResponse::json(json!({
                     "error": "unsupported_grant",
                 })),
-            )))
+            )))?
         }
         None => {
             Err(IronError::new(AppError::from("OAuth"), (
@@ -283,141 +321,9 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                 JsonResponse::json(json!({
                     "error": "invalid_grant",
                 })),
-            )))
+            )))?
         }
-    }
-}
-
-
-fn authorization_code_flow(
-    app: &App,
-    conn: &PgConnection,
-    code: &str,
-    redirect_uri: Option<&str>,
-    client_id: &str,
-) -> IronResult<Response> {
-    let claims: JWTClaims = validate_authorization_code(code, app.config().jwt_secret.as_bytes())
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-    if let Some(redirect_uri) = redirect_uri {
-        if claims.redirect_uri != redirect_uri {
-            return Err(IronError::new(AppError::from("OAuth"), (
-                status::Unauthorized,
-                JsonResponse::json(json!({
-                    "error": "unauthorized_client",
-                })),
-            )));
-        }
-    }
-
-    if claims.client_id != client_id {
-        return Err(IronError::new(AppError::from("OAuth"), (
-            status::Unauthorized,
-            JsonResponse::json(json!({
-                "error": "unauthorized_client",
-            })),
-        )));
-    }
-    let oauth_app = oauth_apps::table
-        .filter(oauth_apps::dsl::client_id.eq(client_id))
-        .get_result::<OAuthApp>(conn)
-        .optional()
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-    if oauth_app.is_none() {
-        return Err(IronError::new(AppError::from("OAuth"), (
-            status::Unauthorized,
-            JsonResponse::json(json!({
-                "error": "unauthorized_client",
-            })),
-        )));
-    }
-
-    // TODO: generate access_token
-    let token = String::new();
-
-    Ok(Response::with((
-        status::Ok,
-        JsonResponse::json(json!({
-            "access_token": token,
-            "token_type": "bearer",
-            "expires_in": SECS_PER_ONE_DAY,
-        })),
-    )))
-}
-
-fn resource_owner_password_credentials_flow(
-    app: &App,
-    conn: &PgConnection,
-    username: &str,
-    password: &str,
-    client_id: &str,
-    scope: Option<Vec<&str>>,
-) -> IronResult<Response> {
-    let oauth_app = oauth_apps::table
-        .filter(oauth_apps::dsl::client_id.eq(client_id))
-        .get_result::<OAuthApp>(conn)
-        .optional()
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-    if oauth_app.is_none() {
-        return Err(IronError::new(AppError::from("OAuth"), (
-            status::Unauthorized,
-            JsonResponse::json(json!({
-                "error": "unauthorized_client",
-            })),
-        )));
-    }
-
-    let _user = app.authenticate(&username, &password)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .ok_or_else(|| {
-            IronError::new(AppError::from("OAuth"), (
-                status::Unauthorized,
-                JsonResponse::json(json!({
-                    "error": "access_denied",
-                })),
-            ))
-        })?;
-
-    // TODO: generate access_token
-    let _scope = scope;
-    let token = "".to_owned();
-
-    Ok(Response::with((
-        status::Ok,
-        JsonResponse::json(json!({
-            "access_token": token,
-            "token_type": "bearer",
-            "expires_in": SECS_PER_ONE_DAY,
-        })),
-    )))
-}
-
-fn client_credentials_flow(
-    _app: &App,
-    conn: &PgConnection,
-    client_id: &str,
-    scope: Option<Vec<&str>>,
-) -> IronResult<Response> {
-    let oauth_app = oauth_apps::table
-        .filter(oauth_apps::dsl::client_id.eq(client_id))
-        .get_result::<OAuthApp>(conn)
-        .optional()
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
-    if oauth_app.is_none() {
-        return Err(IronError::new(AppError::from("OAuth"), (
-            status::Unauthorized,
-            JsonResponse::json(json!({
-                "error": "unauthorized_client",
-            })),
-        )));
-    }
-
-    // TODO: get user info from DB
-    let _user = 0;
-
-    // TODO: generate access_token
-    let _scope = scope;
-    let token = "".to_owned();
+    };
 
     Ok(Response::with((
         status::Ok,
@@ -453,18 +359,18 @@ fn generate_authorization_code(
     let jti = Uuid::new_v4();
     let iat = UTC::now();
     let claims = json!({
-            "jti": jti.to_string(),
-            "iss": iss,
-            "aud": aud,
-            "sub": "access_token",
-            "iat": iat.timestamp(),
-            "nbf": iat.timestamp(),
-            "exp": iat.timestamp() + lifetime.as_secs() as i64,
-            "user_id": user.id,
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "scope": scope,
-        });
+        "jti": jti.to_string(),
+        "iss": iss,
+        "aud": aud,
+        "sub": "access_token",
+        "iat": iat.timestamp(),
+        "nbf": iat.timestamp(),
+        "exp": iat.timestamp() + lifetime.as_secs() as i64,
+        "user_id": user.id,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+    });
     jsonwebtoken::encode(&Default::default(), &claims, secret).map_err(Into::into)
 }
 
