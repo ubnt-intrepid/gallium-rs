@@ -14,16 +14,14 @@ use error::{AppResult, AppError};
 use uuid::Uuid;
 use chrono::UTC;
 use jsonwebtoken;
+use super::WWWAuthenticate;
+use crypto;
 
+use diesel::pg::PgConnection;
+use diesel::insert;
 use diesel::prelude::*;
-use models::{User, OAuthApp};
-use schema::oauth_apps;
-
-const SECS_PER_ONE_DAY: u64 = 60 * 60 * 24;
-
-header! {
-    (WWWAuthenticate, "WWW-Authenticate") => [String]
-}
+use models::{User, OAuthApp, AccessToken, NewAccessToken};
+use schema::{access_tokens, oauth_apps, users};
 
 
 pub fn create_oauth_handler() -> Chain {
@@ -164,16 +162,23 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         }
 
         Some("token") => {
-            // TODO: generate token
-            let token = String::new();
+            let new_token = insert_access_token(&*conn, user.id, oauth_app.id, "")
+                .map_err(|err| {
+                    IronError::new(err, (
+                        status::InternalServerError,
+                        JsonResponse::json(json!({
+                            "error": "server_error",
+                            "error_description": "failed to create new access token",
+                        })),
+                    ))
+                })?;
 
             // Build redirect URL
             let mut location = Url::parse(redirect_uri.borrow()).unwrap();
             {
                 let mut queries = location.query_pairs_mut();
-                queries.append_pair("access_token", &token);
+                queries.append_pair("access_token", &new_token.hash);
                 queries.append_pair("token_type", "bearer");
-                queries.append_pair("expires_in", &SECS_PER_ONE_DAY.to_string());
                 if let Some(state) = state {
                     queries.append_pair("state", state.borrow());
                 }
@@ -257,15 +262,19 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     }
 
     let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
+    let _scope = scope;
 
     let app = req.extensions.get::<App>().unwrap();
+    let conn = app.get_db_conn().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
     let oauth_app = app.authenticate_app(client_id, client_secret)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| {
             IronError::new(AppError::from("OAuth"), status::Unauthorized)
         })?;
 
-    let token = match grant_type.as_ref().map(|s| s.borrow() as &str) {
+    let new_token: AccessToken = match grant_type.as_ref().map(|s| s.borrow() as &str) {
         Some("authorization_code") => {
             let code = code.ok_or_else(|| {
                 IronError::new(AppError::from("OAuth"), (
@@ -299,9 +308,24 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                 )));
             }
 
-            // TODO: generate access_token
-            let token = String::new();
-            token
+            let user = users::table
+                .filter(users::dsl::id.eq(claims.user_id))
+                .get_result::<User>(&*conn)
+                .optional()
+                .map_err(|err| IronError::new(err, status::InternalServerError))?
+                .ok_or_else(|| {
+                    IronError::new(AppError::from("OAuth"), status::Unauthorized)
+                })?;
+
+            insert_access_token(&*conn, user.id, oauth_app.id, "")
+                .map_err(|err| {
+                    IronError::new(err, (
+                        status::InternalServerError,
+                        JsonResponse::json(json!({
+                            "error": "server_error",
+                        })),
+                    ))
+                })?
         }
         Some("password") => {
             let (username, password) = match (username, password) {
@@ -315,7 +339,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     )))
                 }
             };
-            let _user = app.authenticate(&username, &password)
+            let user = app.authenticate(&username, &password)
                 .map_err(|err| IronError::new(err, status::InternalServerError))?
                 .ok_or_else(|| {
                     IronError::new(AppError::from("OAuth"), (
@@ -326,20 +350,25 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     ))
                 })?;
 
-            // TODO: generate access_token
-            let _scope = scope;
-            let token = "".to_owned();
-            token
+            insert_access_token(&*conn, user.id, oauth_app.id, "")
+                .map_err(|err| {
+                    IronError::new(err, (
+                        status::InternalServerError,
+                        JsonResponse::json(json!({
+                            "error": "server_error",
+                        })),
+                    ))
+                })?
         }
-        Some("client_credentials") => {
-            // TODO: get user info related to client_id
-            let _user = 0;
-
-            // TODO: generate access_token
-            let _scope = scope;
-            let token = "".to_owned();
-            token
-        }
+        // Some("client_credentials") => {
+        //     // TODO: get user info related to client_id
+        //     let _user = 0;
+        //
+        //     // TODO: generate access_token
+        //     let _scope = scope;
+        //     let token = "".to_owned();
+        //     token
+        // }
         Some(ref _s) => {
             Err(IronError::new(AppError::from("OAuth"), (
                 status::BadRequest,
@@ -361,9 +390,8 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     Ok(Response::with((
         status::Ok,
         JsonResponse::json(json!({
-            "access_token": token,
+            "access_token": new_token.hash,
             "token_type": "bearer",
-            "expires_in": SECS_PER_ONE_DAY,
         })),
     )))
 }
@@ -411,4 +439,23 @@ fn validate_authorization_code(token: &str, secret: &[u8]) -> AppResult<JWTClaim
     jsonwebtoken::decode(token, secret, &Default::default())
         .map_err(Into::into)
         .map(|token_data| token_data.claims)
+}
+
+fn insert_access_token(
+    conn: &PgConnection,
+    user_id: i32,
+    oauth_app_id: i32,
+    description: &str,
+) -> AppResult<AccessToken> {
+    let token_hash = crypto::generate_sha1_random();
+    let new_token = NewAccessToken {
+        user_id,
+        oauth_app_id,
+        description,
+        hash: &token_hash,
+    };
+    insert(&new_token)
+        .into(access_tokens::table)
+        .get_result::<AccessToken>(conn)
+        .map_err(AppError::from)
 }

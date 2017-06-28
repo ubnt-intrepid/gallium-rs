@@ -10,10 +10,7 @@ use flate2::read::GzDecoder;
 use app::App;
 use error::AppError;
 use models::Repository;
-
-header! {
-    (WWWAuthenticate, "WWW-Authenticate") => [String]
-}
+use super::WWWAuthenticate;
 
 
 pub(super) fn create_git_handler() -> Router {

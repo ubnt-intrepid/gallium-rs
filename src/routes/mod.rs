@@ -1,10 +1,14 @@
-use iron::prelude::*;
+mod oauth;
+mod git;
+
+use iron::Chain;
 use mount::Mount;
 use api;
 use app::{App, AppMiddleware};
 
-mod oauth;
-mod git;
+header! {
+    (WWWAuthenticate, "WWW-Authenticate") => [String]
+}
 
 pub fn create_handler(app: App) -> Chain {
     let mut mount = Mount::new();
