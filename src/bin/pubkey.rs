@@ -11,8 +11,9 @@ use std::path::Path;
 use diesel::prelude::*;
 use gallium::models::{Project, PublicKey};
 use gallium::schema::public_keys;
-use gallium::app::App;
 use gallium::config::Config;
+use gallium::db::DB;
+use gallium::app;
 
 fn build_cli<'a, 'b: 'a>() -> clap::App<'a, 'b> {
     clap::App::new("pubkey")
@@ -44,14 +45,14 @@ fn main() {
 
 fn access(m: &clap::ArgMatches) -> Result<(), String> {
     let config = Config::load().unwrap();
-    let app: App = App::new(config).unwrap();
+    let db = DB::new(&config.database_url).unwrap();
 
     let s = env::var("SSH_ORIGINAL_COMMAND").map_err(
         |err| err.to_string(),
     )?;
     let (action, user, project) = parse_ssh_command(&s)?;
 
-    let (_user, project, repo) = app.open_repository(&user, &project)
+    let (_user, project, repo) = app::open_repository(&db, &config, &user, &project)
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "Failed to open repository".to_owned())?;
 
@@ -67,8 +68,8 @@ fn access(m: &clap::ArgMatches) -> Result<(), String> {
 
 fn show(_m: &clap::ArgMatches) -> Result<(), String> {
     let config = Config::load().unwrap();
-    let app = App::new(config).unwrap();
-    let conn = app.get_db_conn().unwrap();
+    let db = DB::new(&config.database_url).unwrap();
+    let conn = db.get_db_conn().unwrap();
 
     let keys: Vec<PublicKey> = public_keys::table.load(&*conn).unwrap();
     for key in keys {

@@ -8,8 +8,8 @@ use crypto;
 use diesel::prelude::*;
 use diesel::insert;
 use diesel::delete;
+use db::DB;
 
-use app::App;
 use models::{OAuthApp, NewOAuthApp};
 use schema::oauth_apps;
 
@@ -35,8 +35,8 @@ impl From<OAuthApp> for EncodableApplication {
 }
 
 pub(super) fn get_app_list(req: &mut Request) -> IronResult<Response> {
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     let apps: Vec<_> = oauth_apps::table
@@ -53,8 +53,8 @@ pub(super) fn get_client(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     let client: EncodableApplication = oauth_apps::table
@@ -71,8 +71,8 @@ pub(super) fn delete_client(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     delete(oauth_apps::table.filter(oauth_apps::dsl::id.eq(id)))
@@ -103,8 +103,8 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
         client_secret: &client_secret,
         redirect_uri: params.redirect_uri.as_ref().map(|s| s.as_str()),
     };
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     let oauth_app: EncodableApplication = insert(&new_app)

@@ -7,9 +7,10 @@ use router::Router;
 use iron_json_response::JsonResponse;
 
 use error::AppError;
-use app::App;
 use models::{PublicKey, NewPublicKey};
 use schema::public_keys;
+
+use db::DB;
 
 
 #[derive(Serialize)]
@@ -35,8 +36,8 @@ impl From<PublicKey> for EncodablePublicKey {
 
 
 pub(super) fn get_keys(req: &mut Request) -> IronResult<Response> {
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     let keys: Vec<EncodablePublicKey> = public_keys::table
@@ -53,8 +54,8 @@ pub(super) fn get_key(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     let key: EncodablePublicKey = public_keys::table
@@ -84,8 +85,8 @@ pub(super) fn add_key(req: &mut Request) -> IronResult<Response> {
         key: &params.key,
     };
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     let inserted_key: EncodablePublicKey = insert(&new_key)
@@ -103,8 +104,8 @@ pub(super) fn delete_key(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 

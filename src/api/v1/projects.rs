@@ -7,9 +7,12 @@ use router::Router;
 use iron_json_response::JsonResponse;
 
 use error::AppError;
-use app::App;
 use models::{Project, NewProject};
 use schema::{users, projects};
+
+use app;
+use db::DB;
+use config::Config;
 
 
 #[derive(Debug, Serialize)]
@@ -35,8 +38,8 @@ impl From<Project> for EncodableProject {
 
 
 pub(super) fn get_projecs(req: &mut Request) -> IronResult<Response> {
-    let app: &App = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
@@ -54,8 +57,8 @@ pub(super) fn get_project(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-    let app: &App = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
@@ -82,18 +85,19 @@ pub(super) fn create_project(req: &mut Request) -> IronResult<Response> {
             IronError::new(AppError::from("Invalid Request"), status::BadRequest)
         })?;
 
-    let app: &App = req.extensions.get::<App>().unwrap();
-    if app.open_repository(&params.user, &params.name).is_ok() {
+    let db = req.extensions.get::<DB>().unwrap();
+    let config = req.extensions.get::<Config>().unwrap();
+    if app::open_repository(db, config, &params.user, &params.name).is_ok() {
         return Err(IronError::new(
             AppError::from("The repository has already created."),
             status::Conflict,
         ));
     }
 
-    app.create_new_repository(&params.user, &params.name)
+    app::create_new_repository(config, &params.user, &params.name)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
-    let conn = app.get_db_conn().map_err(|err| {
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
@@ -123,14 +127,17 @@ pub(super) fn remove_project(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-    let app: &App = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let config = req.extensions.get::<Config>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    let result = app.open_repository_from_id(id).map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let result = app::open_repository_from_id(db, config, id).map_err(
+        |err| {
+            IronError::new(err, status::InternalServerError)
+        },
+    )?;
     let (_, _, repo) = match result {
         Some(r) => r,
         None => return Ok(Response::with(status::Ok)),

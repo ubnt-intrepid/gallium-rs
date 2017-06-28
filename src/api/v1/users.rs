@@ -7,10 +7,11 @@ use iron::status;
 use iron_json_response::JsonResponse;
 use router::Router;
 
-use app::App;
 use error::AppError;
 use models::{User, NewUser};
 use schema::users;
+
+use db::DB;
 
 
 #[derive(Serialize)]
@@ -34,8 +35,8 @@ impl From<User> for EncodableUser {
 
 
 pub(super) fn get_users(req: &mut Request) -> IronResult<Response> {
-    let app: &App = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
@@ -53,8 +54,8 @@ pub(super) fn get_user(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-    let app: &App = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
@@ -92,8 +93,8 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
         is_admin: params.is_admin.clone(),
     };
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     let inserted_user: EncodableUser = insert(&new_user)

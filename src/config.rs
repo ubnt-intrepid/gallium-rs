@@ -1,6 +1,8 @@
 use std::{env, fs, path};
 use serde_json;
 use error::AppResult;
+use iron::typemap::Key;
+use std::sync::Arc;
 
 
 #[derive(Debug, Clone, Deserialize)]
@@ -21,4 +23,12 @@ impl Config {
         let config = serde_json::from_reader(&mut f)?;
         Ok(config)
     }
+
+    pub fn repository_path(&self, user: &str, project: &str) -> path::PathBuf {
+        self.repository_root.join(user).join(project)
+    }
+}
+
+impl Key for Config {
+    type Value = Arc<Config>;
 }

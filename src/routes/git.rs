@@ -7,11 +7,12 @@ use iron::modifiers::Header;
 use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
-use app::App;
 use error::AppError;
 use models::Repository;
 use super::WWWAuthenticate;
-
+use app;
+use db::DB;
+use config::Config;
 
 pub(super) fn create_git_handler() -> Router {
     let mut router = Router::new();
@@ -73,9 +74,10 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 }
 
 fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
-    let app = req.extensions.get::<App>().unwrap();
+    let db = req.extensions.get::<DB>().unwrap();
+    let config = req.extensions.get::<Config>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    let (_user, project, repo) = app.open_repository(user, project)
+    let (_user, project, repo) = app::open_repository(&db, &config, user, project)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))?;
 
@@ -89,7 +91,7 @@ fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     match service {
         "receive-pack" => {
             let (username, password) = get_basic_auth_param(req)?;
-            let auth_user = app.authenticate(username, password)
+            let auth_user = app::authenticate(&db, username, password)
                 .map_err(|err| IronError::new(err, status::InternalServerError))?
                 .ok_or_else(|| IronError::new(AppError::from(""), status::Unauthorized))?;
 

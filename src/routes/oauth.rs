@@ -9,13 +9,15 @@ use iron::modifiers::Header;
 use url::{Url, form_urlencoded};
 use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 use router::Router;
-use app::App;
 use error::{AppResult, AppError};
 use uuid::Uuid;
 use chrono::UTC;
 use jsonwebtoken;
 use super::WWWAuthenticate;
 use crypto;
+use db::DB;
+use config::Config;
+use app;
 
 use diesel::pg::PgConnection;
 use diesel::insert;
@@ -70,8 +72,10 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
 
     let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let config = req.extensions.get::<Config>().unwrap();
+
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, (
             status::InternalServerError,
             JsonResponse::json(json!({
@@ -80,7 +84,7 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         ))
     })?;
 
-    let user = app.authenticate(username, password)
+    let user = app::authenticate(&db, username, password)
         .map_err(|err| {
             IronError::new(err, (
                 status::InternalServerError,
@@ -138,10 +142,7 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
                     .unwrap_or_default(),
             };
             let code = claims
-                .encode(
-                    app.config().jwt_secret.as_bytes(),
-                    Duration::from_secs(10 * 60),
-                )
+                .encode(config.jwt_secret.as_bytes(), Duration::from_secs(10 * 60))
                 .map_err(|err| {
                     IronError::new(err, (
                         status::InternalServerError,
@@ -272,11 +273,12 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
     let _scope = scope;
 
-    let app = req.extensions.get::<App>().unwrap();
-    let conn = app.get_db_conn().map_err(|err| {
+    let db = req.extensions.get::<DB>().unwrap();
+    let config = req.extensions.get::<Config>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let oauth_app = app.authenticate_app(client_id, client_secret)
+    let oauth_app = app::authenticate_app(&db, client_id, client_secret)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| {
             IronError::new(AppError::from("OAuth"), status::Unauthorized)
@@ -292,7 +294,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     })),
                 ))
             })?;
-            let claims = AuthorizationCodeClaims::validate(code.borrow(), app.config().jwt_secret.as_bytes())
+            let claims = AuthorizationCodeClaims::validate(code.borrow(), config.jwt_secret.as_bytes())
                 .map_err(|err| IronError::new(err, status::InternalServerError))?;
             if let Some(redirect_uri) = redirect_uri {
                 if claims.redirect_uri != redirect_uri {
@@ -333,7 +335,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
                     )))
                 }
             };
-            app.authenticate(&username, &password)
+            app::authenticate(&db, &username, &password)
                 .map_err(|err| IronError::new(err, status::InternalServerError))?
                 .ok_or_else(|| {
                     IronError::new(AppError::from("OAuth"), (
