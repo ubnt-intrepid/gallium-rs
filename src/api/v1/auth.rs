@@ -12,6 +12,7 @@ use app::App;
 use error::AppError;
 
 use diesel::prelude::*;
+use diesel::pg::PgConnection;
 use models::OAuthApp;
 use schema::oauth_apps;
 
@@ -97,7 +98,6 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         })?;
 
     // redirect_uri のデフォルト値はどうすべきか？
-    //   - /oauth/token?
     let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
 
     let scope = scope.as_ref().map(|s| s.split(" ").collect());
@@ -150,60 +150,105 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    let (mut username, mut password, mut scope, mut client_id) = (None, None, None, None);
+    let (mut grant_type, mut username, mut password, mut scope, mut client_id, mut code, mut redirect_uri) =
+        (None, None, None, None, None, None, None);
     for (key, val) in form_urlencoded::parse(&body) {
         match key.borrow() as &str {
-            "grant_type" => {
-                match val.borrow() as &str {
-                    "password" => (),
-                    "code" |
-                    "token" |
-                    "client_credentials" => {
-                        return Err(IronError::new(AppError::from("OAuth"), (
-                            status::BadRequest,
-                            JsonResponse::json(json!({
-                                "error": "unsupported_grant",
-                            })),
-                        )))
-                    }
-                    _ => {
-                        return Err(IronError::new(AppError::from("OAuth"), (
-                            status::BadRequest,
-                            JsonResponse::json(json!({
-                                "error": "invalid_grant",
-                            })),
-                        )))
-                    }
-                }
-            }
+            "grant_type" => grant_type = Some(val),
             "username" => username = Some(val),
             "password" => password = Some(val),
             "scope" => scope = Some(val),
             "client_id" => client_id = Some(val),
+            "code" => code = Some(val),
+            "redirect_uri" => redirect_uri = Some(val),
             _ => (),
         }
     }
-    let (username, password, client_id) = match (username, password, client_id) {
-        (Some(u), Some(p), Some(c)) => (u, p, c),
-        _ => {
-            return Err(IronError::new(AppError::from("OAuth"), (
-                status::BadRequest,
-                JsonResponse::json(json!({
-                    "error": "invalid_request",
-                })),
-            )))
-        }
-    };
-    let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
 
     let app = req.extensions.get::<App>().unwrap();
     let conn = app.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
 
+    match grant_type.as_ref().map(|s| s.borrow() as &str) {
+        Some("authorization_code") => {
+            let code = code.ok_or_else(|| {
+                IronError::new(AppError::from("OAuth"), (
+                    status::BadRequest,
+                    JsonResponse::json(json!({
+                        "error": "invalid_request",
+                    })),
+                ))
+            })?;
+            authorization_code_grant(
+                app,
+                &*conn,
+                code.borrow(),
+                redirect_uri.as_ref().map(|s| s.borrow() as &str),
+            )
+        }
+        Some("password") => {
+            let (username, password, client_id) = match (username, password, client_id) {
+                (Some(u), Some(p), Some(c)) => (u, p, c),
+                _ => {
+                    return Err(IronError::new(AppError::from("OAuth"), (
+                        status::BadRequest,
+                        JsonResponse::json(json!({
+                            "error": "invalid_request",
+                        })),
+                    )))
+                }
+            };
+            let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
+            resource_owner_password_credentials_grant(
+                app,
+                &*conn,
+                username.borrow(),
+                password.borrow(),
+                client_id.borrow(),
+                scope,
+            )
+        }
+        Some(ref _s) => {
+            Err(IronError::new(AppError::from("OAuth"), (
+                status::BadRequest,
+                JsonResponse::json(json!({
+                    "error": "unsupported_grant",
+                })),
+            )))
+        }
+        None => {
+            Err(IronError::new(AppError::from("OAuth"), (
+                status::BadRequest,
+                JsonResponse::json(json!({
+                    "error": "invalid_grant",
+                })),
+            )))
+        }
+    }
+}
+
+
+fn authorization_code_grant(
+    app: &App,
+    conn: &PgConnection,
+    code: &str,
+    redirect_uri: Option<&str>,
+) -> IronResult<Response> {
+    Ok(Response::with(status::Ok))
+}
+
+fn resource_owner_password_credentials_grant(
+    app: &App,
+    conn: &PgConnection,
+    username: &str,
+    password: &str,
+    client_id: &str,
+    scope: Option<Vec<&str>>,
+) -> IronResult<Response> {
     let oauth_app = oauth_apps::table
-        .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
-        .get_result::<OAuthApp>(&*conn)
+        .filter(oauth_apps::dsl::client_id.eq(client_id))
+        .get_result::<OAuthApp>(conn)
         .optional()
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
     if oauth_app.is_none() {
