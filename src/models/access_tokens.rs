@@ -12,7 +12,6 @@ pub struct AccessToken {
     pub user_id: i32,
     pub oauth_app_id: i32,
     pub hash: String,
-    pub description: String,
 }
 
 #[derive(Insertable)]
@@ -21,5 +20,4 @@ pub struct NewAccessToken<'a> {
     pub user_id: i32,
     pub oauth_app_id: i32,
     pub hash: &'a str,
-    pub description: &'a str,
 }

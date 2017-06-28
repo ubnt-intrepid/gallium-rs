@@ -7,7 +7,6 @@ table! {
         user_id -> Int4,
         oauth_app_id -> Int4,
         hash -> Varchar,
-        description -> Text,
     }
 }
 
