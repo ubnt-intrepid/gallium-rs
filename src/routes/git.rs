@@ -4,35 +4,19 @@ use iron::status;
 use iron::headers::{Authorization, Basic, CacheControl, CacheDirective, Encoding, ContentEncoding, ContentType};
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
-use mount::Mount;
 use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
-use api;
-use app::{App, AppMiddleware};
+use app::App;
 use error::AppError;
-use git::Repository;
-use oauth;
-
+use models::Repository;
 
 header! {
     (WWWAuthenticate, "WWW-Authenticate") => [String]
 }
 
 
-pub fn create_handler(app: App) -> Chain {
-    let mut mount = Mount::new();
-    mount.mount("/", create_git_handler());
-    mount.mount("/api/v1", api::v1::create_api_handler());
-    mount.mount("/oauth", oauth::create_oauth_handler());
-
-    let mut chain = Chain::new(mount);
-    chain.link_before(AppMiddleware::new(app));
-    chain
-}
-
-
-fn create_git_handler() -> Router {
+pub(super) fn create_git_handler() -> Router {
     let mut router = Router::new();
     router.get(repo_route("/info/refs"), handle_info_refs, "info_refs");
     router.post(
@@ -94,9 +78,9 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
     let app = req.extensions.get::<App>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    let (_user, project, repo) = app.open_repository(user, project).map_err(|err| {
-        IronError::new(err, status::NotFound)
-    })?;
+    let (_user, project, repo) = app.open_repository(user, project)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))?;
 
     // TODO: check scope
     // MEMO:

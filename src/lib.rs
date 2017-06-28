@@ -33,11 +33,9 @@ pub mod app;
 pub mod config;
 pub mod crypto;
 pub mod error;
-pub mod git;
 pub mod models;
 pub mod routes;
 pub mod schema;
-pub mod oauth;
 
 pub mod api {
     #[path = "v1/mod.rs"]

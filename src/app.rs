@@ -10,7 +10,7 @@ use diesel::prelude::*;
 use diesel::pg::PgConnection;
 use models::{User, Project, OAuthApp};
 use schema::{users, projects, oauth_apps};
-use git::Repository;
+use models::Repository;
 use error::AppResult;
 
 type DbPool = Pool<ConnectionManager<PgConnection>>;
@@ -47,22 +47,25 @@ impl App {
         Ok(())
     }
 
-    pub fn open_repository(&self, user: &str, project: &str) -> AppResult<(User, Project, Repository)> {
+    pub fn open_repository(&self, user: &str, project: &str) -> AppResult<Option<(User, Project, Repository)>> {
         let conn = self.get_db_conn()?;
-        let (user, project) = users::table
+        let result = users::table
             .inner_join(projects::table)
             .filter(users::dsl::name.eq(&user))
             .filter(projects::dsl::name.eq(project))
             .get_result::<(User, Project)>(&*conn)
-            .optional()?
-            .ok_or_else(|| "The repository has not created yet")?;
-
-        let repo_path = self.generate_repository_path(&user.name, &project.name);
-        if !repo_path.is_dir() {
-            return Err("Not found".into());
+            .optional()?;
+        match result {
+            Some((user, project)) => {
+                let repo_path = self.generate_repository_path(&user.name, &project.name);
+                if !repo_path.is_dir() {
+                    return Err("".into());
+                }
+                let repo = Repository::open(repo_path)?;
+                Ok(Some((user, project, repo)))
+            }
+            None => Ok(None),
         }
-        let repo = Repository::open(repo_path)?;
-        Ok((user, project, repo))
     }
 
     pub fn open_repository_from_id(&self, id: i32) -> AppResult<Option<(User, Project, Repository)>> {

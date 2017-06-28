@@ -51,9 +51,9 @@ fn access(m: &clap::ArgMatches) -> Result<(), String> {
     )?;
     let (action, user, project) = parse_ssh_command(&s)?;
 
-    let (_user, project, repo) = app.open_repository(&user, &project).map_err(
-        |err| err.to_string(),
-    )?;
+    let (_user, project, repo) = app.open_repository(&user, &project)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "Failed to open repository".to_owned())?;
 
     let user_id = m.value_of("user-id").and_then(|s| s.parse().ok()).unwrap();
     check_scope(&action, user_id, &project)?;
