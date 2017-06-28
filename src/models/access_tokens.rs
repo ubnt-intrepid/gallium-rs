@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 use super::users::User;
-use super::oauth_apps::OAuthApp;
+use super::apps::OAuthApp;
 use schema::access_tokens;
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]

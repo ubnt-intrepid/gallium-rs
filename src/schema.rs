@@ -11,7 +11,7 @@ table! {
 }
 
 table! {
-    oauth_apps (id) {
+    apps (id) {
         id -> Int4,
         name -> Text,
         created_at -> Timestamp,

@@ -11,7 +11,7 @@ use diesel::delete;
 use db::DB;
 
 use models::{OAuthApp, NewOAuthApp};
-use schema::oauth_apps;
+use schema::apps;
 
 #[derive(Serialize)]
 pub struct EncodableApplication {
@@ -39,7 +39,7 @@ pub(super) fn get_app_list(req: &mut Request) -> IronResult<Response> {
     let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let apps: Vec<_> = oauth_apps::table
+    let apps: Vec<_> = apps::table
         .load::<OAuthApp>(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
@@ -57,8 +57,8 @@ pub(super) fn get_client(req: &mut Request) -> IronResult<Response> {
     let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let client: EncodableApplication = oauth_apps::table
-        .filter(oauth_apps::dsl::id.eq(id))
+    let client: EncodableApplication = apps::table
+        .filter(apps::dsl::id.eq(id))
         .get_result::<OAuthApp>(&*conn)
         .optional()
         .map_err(|err| IronError::new(err, status::InternalServerError))?
@@ -75,7 +75,7 @@ pub(super) fn delete_client(req: &mut Request) -> IronResult<Response> {
     let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    delete(oauth_apps::table.filter(oauth_apps::dsl::id.eq(id)))
+    delete(apps::table.filter(apps::dsl::id.eq(id)))
         .execute(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
@@ -108,7 +108,7 @@ pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
     let oauth_app: EncodableApplication = insert(&new_app)
-        .into(oauth_apps::table)
+        .into(apps::table)
         .get_result::<OAuthApp>(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into();

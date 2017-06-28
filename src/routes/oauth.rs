@@ -22,7 +22,7 @@ use diesel::pg::PgConnection;
 use diesel::insert;
 use diesel::prelude::*;
 use models::{User, OAuthApp, AccessToken, NewAccessToken};
-use schema::{access_tokens, oauth_apps, users};
+use schema::{access_tokens, apps, users};
 
 
 pub fn create_oauth_handler() -> Chain {
@@ -105,8 +105,8 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
             })),
         ))
     })?;
-    let oauth_app = oauth_apps::table
-        .filter(oauth_apps::dsl::client_id.eq(client_id.borrow() as &str))
+    let oauth_app = apps::table
+        .filter(apps::dsl::client_id.eq(client_id.borrow() as &str))
         .get_result::<OAuthApp>(&*conn)
         .optional()
         .map_err(|err| {
