@@ -8,7 +8,7 @@ use router::Router;
 use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
 use error::AppError;
-use models::{User, Repository};
+use models::{User, Project, Repository};
 use super::WWWAuthenticate;
 use db::DB;
 use config::Config;
@@ -74,21 +74,24 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
     Ok((username, password))
 }
 
-fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
+fn open_repository(req: &mut Request) -> IronResult<(User, Project, Repository)> {
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    let (_user, project, repo) = repository::open_repository(&db, &config, user, project)
+    repository::open_repository(&db, &config, user, project)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))?;
+        .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))
+}
 
-    // TODO: check scope
-    // MEMO:
-    // * receive-pack
-    //   - public/private ともに認証必須
-    //* upload-pack
-    //   - private の場合のみ認証必須
-    //   - 現状は実質 public のみであるため認証回りは省略している
+// TODO: check scope
+// MEMO:
+// * receive-pack
+//   - public/private ともに認証必須
+//* upload-pack
+//   - private の場合のみ認証必須
+//   - 現状は実質 public のみであるため認証回りは省略している
+fn check_scope(req: &mut Request, service: &str, project: &Project) -> IronResult<()> {
+    let db = req.extensions.get::<DB>().unwrap();
     match service {
         "receive-pack" => {
             let (username, password) = get_basic_auth_param(req)?;
@@ -103,8 +106,7 @@ fn open_repository(req: &mut Request, service: &str) -> IronResult<Repository> {
         "upload-pack" => (),
         _ => unreachable!(),
     }
-
-    Ok(repo)
+    Ok(())
 }
 
 fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
@@ -147,7 +149,8 @@ fn packet_write(data: &str) -> Vec<u8> {
 
 fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
-    let repo = open_repository(req, service)?;
+    let (_user, project, repo) = open_repository(req)?;
+    check_scope(req, service, &project)?;
 
     let mut body = packet_write(&format!("# service=git-{}\n", service));
     body.extend(b"0000");
@@ -169,7 +172,8 @@ fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
 }
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
-    let repo = open_repository(req, service)?;
+    let (_user, project, repo) = open_repository(req)?;
+    check_scope(req, service, &project)?;
 
     match req.headers.get::<ContentType>() {
         Some(&ContentType(Mime(TopLevel::Application, SubLevel::Ext(ref s), _)))
