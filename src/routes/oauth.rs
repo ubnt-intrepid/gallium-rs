@@ -1,24 +1,24 @@
 use std::borrow::Borrow;
-use std::io;
 use std::error::Error;
+use std::io;
 use std::time::Duration;
+
 use iron::prelude::*;
 use iron::status;
 use iron::headers::{Authorization, Basic, ContentType, Location};
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
-use url::{Url, form_urlencoded};
 use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 use router::Router;
-use error::{AppResult, AppError};
-use uuid::Uuid;
-use chrono::UTC;
-use jsonwebtoken;
-use super::WWWAuthenticate;
-use db::DB;
-use config::Config;
+use url::{Url, form_urlencoded};
 
+use authorization_code::AuthorizationCode;
+use config::Config;
+use db::DB;
+use error::AppError;
 use models::{User, OAuthApp, AccessToken};
+
+use super::WWWAuthenticate;
 
 
 pub fn create_oauth_handler() -> Chain {
@@ -84,7 +84,7 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
 
     match response_type.as_ref().map(|s| s.borrow() as &str) {
         Some("code") => {
-            let claims = AuthorizationCodeClaims {
+            let claims = AuthorizationCode {
                 user_id: user.id,
                 client_id: client_id.to_string(),
                 redirect_uri: redirect_uri.to_string(),
@@ -193,7 +193,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
     let user = match grant_type.as_ref().map(|s| s.borrow() as &str) {
         Some("authorization_code") => {
             let code = code.ok_or_else(|| bad_request("invalid_request"))?;
-            let claims = AuthorizationCodeClaims::validate(code.borrow(), config.jwt_secret.as_bytes())
+            let claims = AuthorizationCode::validate(code.borrow(), config.jwt_secret.as_bytes())
                 .map_err(server_error)?;
             if let Some(redirect_uri) = redirect_uri {
                 if claims.redirect_uri != redirect_uri {
@@ -237,47 +237,6 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
         })),
     )))
 }
-
-
-
-#[derive(Debug, Deserialize)]
-pub struct AuthorizationCodeClaims {
-    pub user_id: i32,
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub scope: Vec<String>,
-}
-
-impl AuthorizationCodeClaims {
-    fn validate(token: &str, secret: &[u8]) -> AppResult<Self> {
-        jsonwebtoken::decode(token, secret, &Default::default())
-            .map_err(Into::into)
-            .map(|token_data| token_data.claims)
-    }
-
-    fn encode(&self, secret: &[u8], lifetime: Duration) -> AppResult<String> {
-        let iss = "http://localhost:3000/";
-        let aud = vec!["http://localhost:3000/"];
-
-        let jti = Uuid::new_v4();
-        let iat = UTC::now();
-        let claims = json!({
-            "jti": jti.to_string(),
-            "iss": iss,
-            "aud": aud,
-            "sub": "access_token",
-            "iat": iat.timestamp(),
-            "nbf": iat.timestamp(),
-            "exp": iat.timestamp() + lifetime.as_secs() as i64,
-            "user_id": self.user_id,
-            "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
-            "scope": self.scope,
-        });
-        jsonwebtoken::encode(&Default::default(), &claims, secret).map_err(Into::into)
-    }
-}
-
 
 
 fn bad_request(oauth_error: &str) -> IronError {

@@ -29,6 +29,7 @@ extern crate error_chain;
 extern crate ring;
 extern crate url;
 
+pub mod authorization_code;
 pub mod config;
 pub mod crypto;
 pub mod db;
