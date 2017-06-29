@@ -1,5 +1,4 @@
-use std::borrow::Borrow;
-use std::io::{self, Read};
+use std::borrow::{Borrow, Cow};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -9,6 +8,7 @@ use uuid::Uuid;
 use url::{Url, form_urlencoded};
 
 use error::{AppResult, AppError};
+use models::Scope;
 
 
 #[derive(Debug, Deserialize)]
@@ -16,26 +16,17 @@ pub struct AuthorizationCode {
     pub user_id: i32,
     pub client_id: String,
     pub redirect_uri: String,
-    pub scope: Vec<String>,
+    pub scope: Option<Vec<Scope>>,
 }
 
 impl AuthorizationCode {
-    pub fn new(user_id: i32, client_id: &str, redirect_uri: &str) -> Self {
+    pub fn new(user_id: i32, client_id: &str, redirect_uri: &str, scope: Option<Vec<Scope>>) -> Self {
         AuthorizationCode {
             user_id,
             client_id: client_id.to_string(),
             redirect_uri: redirect_uri.to_string(),
-            scope: Vec::new(),
+            scope: scope,
         }
-    }
-
-    pub fn scope<I, S>(mut self, scopes: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.scope.extend(scopes.into_iter().map(Into::into));
-        self
     }
 
     pub fn encode(&self, secret: &[u8], lifetime: Duration) -> AppResult<String> {
@@ -87,19 +78,19 @@ impl FromStr for ResponseType {
     }
 }
 
-pub struct AuthorizeRequestParam {
+pub struct AuthorizeRequestParam<'a> {
     pub response_type: ResponseType,
-    pub client_id: String,
-    pub redirect_uri: Option<String>,
-    pub scope: Option<Vec<String>>,
-    pub state: Option<String>,
+    pub client_id: Cow<'a, str>,
+    pub redirect_uri: Option<Cow<'a, str>>,
+    pub scope: Option<Vec<Scope>>,
+    pub state: Option<Cow<'a, str>>,
 }
 
-impl AuthorizeRequestParam {
-    pub fn from_url(url: &Url) -> AppResult<Self> {
+impl<'a> AuthorizeRequestParam<'a> {
+    pub fn from_url(url: &'a Url) -> AppResult<Self> {
         let (mut response_type, mut client_id, mut redirect_uri, mut scope, mut state) = (None, None, None, None, None);
         for (key, val) in url.query_pairs() {
-            match key.borrow() as &str {
+            match &key as &str {
                 "response_type" => response_type = Some(val),
                 "client_id" => client_id = Some(val),
                 "redirect_uri" => redirect_uri = Some(val),
@@ -108,7 +99,6 @@ impl AuthorizeRequestParam {
                 _ => (),
             }
         }
-
         let response_type: ResponseType = response_type
             .ok_or_else(|| AppError::from("invalid_request"))
             .and_then(|s| {
@@ -117,76 +107,94 @@ impl AuthorizeRequestParam {
                 )
             })?;
         let client_id = client_id.ok_or_else(|| AppError::from("invalid_request"))?;
+        let scope = scope.map(|s| s.split(" ").filter_map(|s| s.parse().ok()).collect());
 
         Ok(AuthorizeRequestParam {
             response_type,
-            client_id: client_id.into_owned(),
-            redirect_uri: redirect_uri.map(|s| s.into_owned()),
-            scope: scope.map(|s| s.split(" ").map(|s| s.to_string()).collect()),
-            state: state.map(|s| s.into_owned()),
+            client_id,
+            redirect_uri,
+            scope,
+            state,
         })
     }
 }
 
 
-pub enum GrantType {
-    AuthorizationCode,
-    Password,
-    ClientCredentials,
+pub enum GrantType<'a> {
+    AuthorizationCode {
+        code: Cow<'a, str>,
+        client_id: Cow<'a, str>,
+        client_secret: Cow<'a, str>,
+        redirect_uri: Option<Cow<'a, str>>,
+    },
+    Password {
+        username: Cow<'a, str>,
+        password: Cow<'a, str>,
+        client_id: Cow<'a, str>,
+        client_secret: Cow<'a, str>,
+        scope: Option<Vec<Scope>>,
+    },
+    ClientCredentials {
+        client_id: Cow<'a, str>,
+        client_secret: Cow<'a, str>,
+        scope: Option<Vec<Scope>>,
+    },
 }
 
-impl FromStr for GrantType {
-    type Err = ();
-    fn from_str(s: &str) -> Result<GrantType, Self::Err> {
-        match s {
-            "authorization_code" => Ok(GrantType::AuthorizationCode),
-            "password" => Ok(GrantType::Password),
-            "client_credentials" => Ok(GrantType::ClientCredentials),
-            _ => Err(()),
+impl<'a> GrantType<'a> {
+    pub fn from_vec(body: &'a [u8]) -> Result<Self, &'static str> {
+        let (mut grant_type,
+             mut code,
+             mut username,
+             mut password,
+             mut client_id,
+             mut scope,
+             mut client_secret,
+             mut redirect_uri) = (None, None, None, None, None, None, None, None);
+        for (key, val) in form_urlencoded::parse(&body) {
+            match &key as &str {
+                "grant_type" => grant_type = Some(val),
+                "code" => code = Some(val),
+                "username" => username = Some(val),
+                "password" => password = Some(val),
+                "client_id" => client_id = Some(val),
+                "client_secret" => client_secret = Some(val),
+                "scope" => scope = Some(val.split(" ").filter_map(|s| s.parse().ok()).collect()),
+                "redirect_uri" => redirect_uri = Some(val),
+                _ => (),
+            }
+        }
+        let client_id = client_id.ok_or("invalid_request")?;
+        let client_secret = client_secret.ok_or("invalid_request")?;
+
+        match grant_type.as_ref().map(|s| s.borrow()) {
+            Some("authorization_code") => {
+                let code = code.ok_or("invalid_request")?;
+                Ok(GrantType::AuthorizationCode {
+                    code,
+                    redirect_uri,
+                    client_id,
+                    client_secret,
+                })
+            }
+            Some("password") => {
+                let username = username.ok_or("invalid_request")?;
+                let password = password.ok_or("invalid_request")?;
+                Ok(GrantType::Password {
+                    username,
+                    password,
+                    client_id,
+                    client_secret,
+                    scope,
+                })
+            }
+            Some("client_credentials") => Ok(GrantType::ClientCredentials {
+                client_id,
+                client_secret,
+                scope,
+            }),
+            Some(_) => Err("unsupported_grant"),
+            None => Err("invalid_grant"),
         }
     }
-}
-
-pub struct TokenEndpointParams {
-    pub grant_type: GrantType,
-    pub username: Option<String>,
-    pub password: Option<String>,
-    pub scope: Option<Vec<String>>,
-    pub code: Option<String>,
-    pub redirect_uri: Option<String>,
-}
-
-pub fn parse_token_endpoint_params<R: Read>(read: &mut R) -> AppResult<TokenEndpointParams> {
-    let mut body = Vec::new();
-    io::copy(read, &mut body)?;
-
-    let (mut grant_type, mut username, mut password, mut scope, mut code, mut redirect_uri) =
-        (None, None, None, None, None, None);
-    for (key, val) in form_urlencoded::parse(&body) {
-        match key.borrow() as &str {
-            "grant_type" => grant_type = Some(val),
-            "username" => username = Some(val),
-            "password" => password = Some(val),
-            "scope" => scope = Some(val),
-            "code" => code = Some(val),
-            "redirect_uri" => redirect_uri = Some(val),
-            _ => (),
-        }
-    }
-
-    let grant_type = grant_type
-        .ok_or_else(|| AppError::from("invalid_grant"))?
-        .parse()
-        .map_err(|_| AppError::from("unsupported_grant"))?;
-
-    Ok(TokenEndpointParams {
-        grant_type,
-        username: username.map(|s| s.into_owned()),
-        password: password.map(|s| s.into_owned()),
-        scope: scope.as_ref().map(|scope| {
-            scope.split(" ").map(|s| s.to_string()).collect()
-        }),
-        code: code.map(|s| s.into_owned()),
-        redirect_uri: redirect_uri.map(|s| s.into_owned()),
-    })
 }

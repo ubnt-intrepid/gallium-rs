@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::error::Error;
+use std::io;
 use std::time::Duration;
 
 use iron::prelude::*;
@@ -15,7 +16,7 @@ use config::Config;
 use db::DB;
 use error::AppError;
 use models::{User, OAuthApp, AccessToken};
-use oauth::{self, AuthorizationCode, AuthorizeRequestParam, ResponseType, GrantType, TokenEndpointParams};
+use oauth::{AuthorizationCode, AuthorizeRequestParam, ResponseType, GrantType};
 
 use super::WWWAuthenticate;
 
@@ -35,8 +36,6 @@ pub fn create_oauth_handler() -> Chain {
 // * https://tools.ietf.org/html/rfc6749#section-4.1.1
 // * https://tools.ietf.org/html/rfc6749#section-4.2.1
 pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
-    let (username, password) = get_credential(req)?;
-
     let url: Url = req.url.clone().into();
     let AuthorizeRequestParam {
         response_type,
@@ -48,25 +47,25 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         bad_request(&err.to_string())
     })?;
 
+    let (username, password) = get_credential(req)?;
+    let db = req.extensions.get::<DB>().unwrap();
+    let user = User::authenticate(&db, &username, &password)
+        .map_err(server_error)?
+        .ok_or_else(|| unauthorized(""))?;
 
     match response_type {
+        // Authorization Code Flow
         ResponseType::Code => {
             let db = req.extensions.get::<DB>().unwrap();
-
-            let user = User::authenticate(&db, &username, &password)
-                .map_err(server_error)?
-                .ok_or_else(|| unauthorized(""))?;
-
             let oauth_app = OAuthApp::find_by_client_id(db, client_id.borrow())
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("unauthorized_client"))?;
 
             // redirect_uri のデフォルト値はどうすべきか？
-            let redirect_uri = redirect_uri.as_ref().unwrap_or(&oauth_app.redirect_uri);
+            let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
 
             let config = req.extensions.get::<Config>().unwrap();
-            let code = AuthorizationCode::new(user.id, &client_id, &redirect_uri)
-                .scope(scope.clone().unwrap_or_default())
+            let code = AuthorizationCode::new(user.id, &client_id, &redirect_uri, scope)
                 .encode(config.jwt_secret.as_bytes(), Duration::from_secs(10 * 60))
                 .map_err(server_error)?;
 
@@ -86,21 +85,17 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
             )))
         }
 
+        // Implicit Flow
         ResponseType::Token => {
             let db = req.extensions.get::<DB>().unwrap();
-
-            let user = User::authenticate(&db, &username, &password)
-                .map_err(server_error)?
-                .ok_or_else(|| unauthorized(""))?;
-
             let oauth_app = OAuthApp::find_by_client_id(db, client_id.borrow())
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("unauthorized_client"))?;
 
             // redirect_uri のデフォルト値はどうすべきか？
-            let redirect_uri = redirect_uri.as_ref().unwrap_or(&oauth_app.redirect_uri);
+            let redirect_uri = redirect_uri.unwrap_or(oauth_app.redirect_uri.into());
 
-            let new_token = AccessToken::create(db, user.id, oauth_app.id, scope.unwrap_or_default())
+            let new_token = AccessToken::create(db, user.id, oauth_app.id, scope)
                 .map_err(server_error)?;
 
             // Build redirect URL
@@ -127,83 +122,81 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
 // * https://tools.ietf.org/html/rfc6749#section-4.3.3
 // * https://tools.ietf.org/html/rfc6749#section-4.4.3
 pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
-    let (client_id, client_secret) = get_credential(req)?;
-
-    match req.headers.get::<ContentType>() {
-        Some(&ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, _))) => (),
+    let mut body = Vec::new();
+    let grant_type = match req.headers.get::<ContentType>() {
+        Some(&ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, _))) => {
+            io::copy(&mut req.body, &mut body).map_err(server_error)?;
+            GrantType::from_vec(&body).map_err(|err| bad_request(&err))?
+        }
         _ => return Err(bad_request("invalid_request")),
-    }
-    let TokenEndpointParams {
-        grant_type,
-        username,
-        password,
-        scope,
-        code,
-        redirect_uri,
-    } = oauth::parse_token_endpoint_params(&mut req.body).map_err(
-        |err| {
-            bad_request(&err.to_string())
-        },
-    )?;
-
-    let db = req.extensions.get::<DB>().unwrap();
+    };
 
     let (user, oauth_app, scope) = match grant_type {
-        GrantType::AuthorizationCode => {
+        GrantType::AuthorizationCode {
+            code,
+            client_id,
+            client_secret,
+            redirect_uri,
+        } => {
             let config = req.extensions.get::<Config>().unwrap();
-            let code = code.ok_or_else(|| bad_request("invalid_request"))?;
-            let code = AuthorizationCode::validate(&code, config.jwt_secret.as_bytes())
+            let secret = &config.jwt_secret;
+
+            let code = AuthorizationCode::validate(&code, secret.as_bytes())
                 .map_err(server_error)?;
             if let Some(redirect_uri) = redirect_uri {
                 if code.redirect_uri != redirect_uri {
                     return Err(unauthorized("invalid_request"));
                 }
             }
+            if code.client_id != client_id {
+                return Err(unauthorized("unauthorized_client"));
+            }
+
+            let db = req.extensions.get::<DB>().unwrap();
             let user = User::find_by_id(db, code.user_id)
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("access_denied"))?;
             let oauth_app = OAuthApp::authenticate(&db, &client_id, &client_secret)
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("unauthorized_client"))?;
-            if code.client_id != oauth_app.client_id {
-                return Err(unauthorized("unauthorized_client"));
-            }
 
-            let scope = code.scope;
-            (user, oauth_app, scope)
+            (user, oauth_app, code.scope)
         }
 
-        GrantType::Password => {
-            let (username, password) = match (username, password) {
-                (Some(u), Some(p)) => (u, p),
-                _ => return Err(bad_request("invalid_request")),
-            };
+        GrantType::Password {
+            username,
+            password,
+            client_id,
+            client_secret,
+            scope,
+        } => {
+            let db = req.extensions.get::<DB>().unwrap();
             let user = User::authenticate(&db, &username, &password)
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("access_denied"))?;
             let oauth_app = OAuthApp::authenticate(&db, &client_id, &client_secret)
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("unauthorized_client"))?;
-            let scope = scope
-                .map(|scopes| scopes.into_iter().map(|s| s.to_string()).collect())
-                .unwrap_or_default();
             (user, oauth_app, scope)
         }
 
-        GrantType::ClientCredentials => {
+        GrantType::ClientCredentials {
+            client_id,
+            client_secret,
+            scope,
+        } => {
+            let db = req.extensions.get::<DB>().unwrap();
             let oauth_app = OAuthApp::authenticate(&db, &client_id, &client_secret)
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("unauthorized_client"))?;
             let user = User::find_by_id(db, oauth_app.user_id)
                 .map_err(server_error)?
                 .ok_or_else(|| unauthorized("access_denied"))?;
-            let scope = scope
-                .map(|scopes| scopes.into_iter().map(|s| s.to_string()).collect())
-                .unwrap_or_default();
             (user, oauth_app, scope)
         }
     };
 
+    let db = req.extensions.get::<DB>().unwrap();
     let new_token = AccessToken::create(db, user.id, oauth_app.id, scope)
         .map_err(server_error)?;
 
