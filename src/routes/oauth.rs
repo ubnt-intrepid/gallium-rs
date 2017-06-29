@@ -12,11 +12,11 @@ use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 use router::Router;
 use url::{Url, form_urlencoded};
 
-use authorization_code::AuthorizationCode;
 use config::Config;
 use db::DB;
 use error::AppError;
 use models::{User, OAuthApp, AccessToken};
+use oauth::AuthorizationCode;
 
 use super::WWWAuthenticate;
 
@@ -65,7 +65,9 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         }
     }
 
-    let scope: Option<Vec<&str>> = scope.as_ref().map(|s| s.split(" ").collect());
+    let scope: Option<Vec<String>> = scope.as_ref().map(|s| {
+        s.split(" ").map(|s| s.to_string()).collect()
+    });
 
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
@@ -84,16 +86,8 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
 
     match response_type.as_ref().map(|s| s.borrow() as &str) {
         Some("code") => {
-            let claims = AuthorizationCode {
-                user_id: user.id,
-                client_id: client_id.to_string(),
-                redirect_uri: redirect_uri.to_string(),
-                scope: scope
-                    .as_ref()
-                    .map(|s| s.into_iter().map(|s| s.to_string()).collect())
-                    .unwrap_or_default(),
-            };
-            let code = claims
+            let code = AuthorizationCode::new(user.id, &client_id, &redirect_uri)
+                .scope(scope.clone().unwrap_or_default())
                 .encode(config.jwt_secret.as_bytes(), Duration::from_secs(10 * 60))
                 .map_err(server_error)?;
 
@@ -114,9 +108,8 @@ pub(super) fn authorize_endpoint(req: &mut Request) -> IronResult<Response> {
         }
 
         Some("token") => {
-            let new_token = AccessToken::create(db, user.id, oauth_app.id).map_err(
-                server_error,
-            )?;
+            let new_token = AccessToken::create(db, user.id, oauth_app.id, scope.unwrap_or_default())
+                .map_err(server_error)?;
 
             // Build redirect URL
             let mut location = Url::parse(redirect_uri.borrow()).unwrap();
@@ -180,9 +173,7 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
             _ => (),
         }
     }
-
     let scope: Option<Vec<&str>> = scope.as_ref().map(|scope| scope.split(" ").collect());
-    let _scope = scope;
 
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
@@ -190,44 +181,54 @@ pub(super) fn token_endpoint(req: &mut Request) -> IronResult<Response> {
         .map_err(server_error)?
         .ok_or_else(|| unauthorized("unauthorized_client"))?;
 
-    let user = match grant_type.as_ref().map(|s| s.borrow() as &str) {
+    let (user, scope) = match grant_type.as_ref().map(|s| s.borrow() as &str) {
         Some("authorization_code") => {
             let code = code.ok_or_else(|| bad_request("invalid_request"))?;
-            let claims = AuthorizationCode::validate(code.borrow(), config.jwt_secret.as_bytes())
+            let code = AuthorizationCode::validate(&code, config.jwt_secret.as_bytes())
                 .map_err(server_error)?;
             if let Some(redirect_uri) = redirect_uri {
-                if claims.redirect_uri != redirect_uri {
+                if code.redirect_uri != redirect_uri {
                     return Err(unauthorized("invalid_request"));
                 }
             }
-            if claims.client_id != oauth_app.client_id {
+            if code.client_id != oauth_app.client_id {
                 return Err(unauthorized("unauthorized_client"));
             }
-            User::find_by_id(db, claims.user_id)
+            let user = User::find_by_id(db, code.user_id)
                 .map_err(server_error)?
-                .ok_or_else(|| unauthorized("access_denied"))?
+                .ok_or_else(|| unauthorized("access_denied"))?;
+            let scope = code.scope;
+
+            (user, scope)
         }
         Some("password") => {
             let (username, password) = match (username, password) {
                 (Some(u), Some(p)) => (u, p),
                 _ => return Err(bad_request("invalid_request")),
             };
-            User::authenticate(&db, &username, &password)
+            let user = User::authenticate(&db, &username, &password)
                 .map_err(server_error)?
-                .ok_or_else(|| unauthorized("access_denied"))?
+                .ok_or_else(|| unauthorized("access_denied"))?;
+            let scope = scope
+                .map(|scopes| scopes.into_iter().map(|s| s.to_string()).collect())
+                .unwrap_or_default();
+            (user, scope)
         }
         Some("client_credentials") => {
-            User::find_by_id(db, oauth_app.user_id)
+            let user = User::find_by_id(db, oauth_app.user_id)
                 .map_err(server_error)?
-                .ok_or_else(|| unauthorized("access_denied"))?
+                .ok_or_else(|| unauthorized("access_denied"))?;
+            let scope = scope
+                .map(|scopes| scopes.into_iter().map(|s| s.to_string()).collect())
+                .unwrap_or_default();
+            (user, scope)
         }
-        Some(ref _s) => Err(bad_request("unsupported_grant"))?,
-        None => Err(bad_request("invalid_grant"))?,
+        Some(ref _s) => return Err(bad_request("unsupported_grant")),
+        None => return Err(bad_request("invalid_grant")),
     };
 
-    let new_token = AccessToken::create(db, user.id, oauth_app.id).map_err(
-        server_error,
-    )?;
+    let new_token = AccessToken::create(db, user.id, oauth_app.id, scope)
+        .map_err(server_error)?;
 
     Ok(Response::with((
         status::Ok,

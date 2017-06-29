@@ -15,11 +15,22 @@ pub struct AuthorizationCode {
 }
 
 impl AuthorizationCode {
-    pub fn validate(token: &str, secret: &[u8]) -> AppResult<Self> {
-        let validation = Default::default();
-        jsonwebtoken::decode(token, secret, &validation)
-            .map_err(Into::into)
-            .map(|token_data| token_data.claims)
+    pub fn new(user_id: i32, client_id: &str, redirect_uri: &str) -> Self {
+        AuthorizationCode {
+            user_id,
+            client_id: client_id.to_string(),
+            redirect_uri: redirect_uri.to_string(),
+            scope: Vec::new(),
+        }
+    }
+
+    pub fn scope<I, S>(mut self, scopes: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.scope.extend(scopes.into_iter().map(Into::into));
+        self
     }
 
     pub fn encode(&self, secret: &[u8], lifetime: Duration) -> AppResult<String> {
@@ -44,5 +55,12 @@ impl AuthorizationCode {
             "scope": self.scope,
         });
         jsonwebtoken::encode(&header, &claims, secret).map_err(Into::into)
+    }
+
+    pub fn validate(token: &str, secret: &[u8]) -> AppResult<Self> {
+        let validation = Default::default();
+        jsonwebtoken::decode(token, secret, &validation)
+            .map_err(Into::into)
+            .map(|token_data| token_data.claims)
     }
 }

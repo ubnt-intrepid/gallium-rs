@@ -20,7 +20,10 @@ pub struct AccessToken {
 }
 
 impl AccessToken {
-    pub fn create(db: &DB, user_id: i32, oauth_app_id: i32) -> AppResult<AccessToken> {
+    pub fn create<I>(db: &DB, user_id: i32, oauth_app_id: i32, _scope: I) -> AppResult<AccessToken>
+    where
+        I: IntoIterator<Item = String>,
+    {
         let token_hash = crypto::generate_sha1_random();
         let new_token = NewAccessToken {
             user_id,
