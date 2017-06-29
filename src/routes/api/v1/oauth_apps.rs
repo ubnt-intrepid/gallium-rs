@@ -4,13 +4,11 @@ use iron_json_response::JsonResponse;
 use bodyparser::Struct;
 use router::Router;
 use error::AppError;
-use crypto;
 use diesel::prelude::*;
-use diesel::insert;
 use diesel::delete;
 use db::DB;
 
-use models::{OAuthApp, NewOAuthApp};
+use models::OAuthApp;
 use schema::apps;
 
 #[derive(Serialize)]
@@ -34,13 +32,10 @@ impl From<OAuthApp> for EncodableApplication {
     }
 }
 
+
 pub(super) fn get_app_list(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-    let apps: Vec<_> = apps::table
-        .load::<OAuthApp>(&*conn)
+    let apps: Vec<_> = OAuthApp::load_apps(db)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
         .map(EncodableApplication::from)
@@ -51,20 +46,42 @@ pub(super) fn get_app_list(req: &mut Request) -> IronResult<Response> {
 
 pub(super) fn get_client(req: &mut Request) -> IronResult<Response> {
     let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
+    let id = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
     let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-    let client: EncodableApplication = apps::table
-        .filter(apps::dsl::id.eq(id))
-        .get_result::<OAuthApp>(&*conn)
-        .optional()
+    let app: EncodableApplication = OAuthApp::find_by_id(db, id)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?
         .into();
-    Ok(Response::with((status::Ok, JsonResponse::json(client))))
+
+    Ok(Response::with((status::Ok, JsonResponse::json(app))))
+}
+
+pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
+    #[derive(Clone, Deserialize)]
+    struct Params {
+        name: String,
+        user_id: i32,
+        redirect_uri: Option<String>,
+    }
+    let Params {
+        name,
+        user_id,
+        redirect_uri,
+    } = req.get::<Struct<Params>>()
+        .ok()
+        .and_then(|s| s)
+        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
+    let redirect_uri = redirect_uri.as_ref().map(|s| s.as_str());
+
+    let db = req.extensions.get::<DB>().unwrap();
+    let oauth_app: EncodableApplication = OAuthApp::create(db, &name, user_id, redirect_uri)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .into();
+
+    Ok(Response::with(
+        (status::Created, JsonResponse::json(oauth_app)),
+    ))
 }
 
 pub(super) fn delete_client(req: &mut Request) -> IronResult<Response> {
@@ -80,40 +97,4 @@ pub(super) fn delete_client(req: &mut Request) -> IronResult<Response> {
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
     Ok(Response::with(status::NoContent))
-}
-
-pub(super) fn register_app(req: &mut Request) -> IronResult<Response> {
-    #[derive(Clone, Deserialize)]
-    struct Params {
-        name: String,
-        user_id: i32,
-        redirect_uri: Option<String>,
-    }
-    let params = req.get::<Struct<Params>>()
-        .ok()
-        .and_then(|s| s)
-        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
-
-    let client_id = crypto::generate_sha1_hash();
-    let client_secret = crypto::generate_sha1_random();
-    let new_app = NewOAuthApp {
-        name: &params.name,
-        user_id: params.user_id,
-        client_id: &client_id,
-        client_secret: &client_secret,
-        redirect_uri: params.redirect_uri.as_ref().map(|s| s.as_str()),
-    };
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-    let oauth_app: EncodableApplication = insert(&new_app)
-        .into(apps::table)
-        .get_result::<OAuthApp>(&*conn)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .into();
-
-    Ok(Response::with(
-        (status::Created, JsonResponse::json(oauth_app)),
-    ))
 }

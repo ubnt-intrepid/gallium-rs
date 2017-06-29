@@ -1,6 +1,8 @@
+use diesel::insert;
 use diesel::prelude::*;
 use chrono::NaiveDateTime;
 
+use crypto;
 use error::AppResult;
 use db::DB;
 use models::User;
@@ -32,6 +34,38 @@ pub struct NewOAuthApp<'a> {
 
 
 impl OAuthApp {
+    pub fn create(db: &DB, name: &str, user_id: i32, redirect_uri: Option<&str>) -> AppResult<Self> {
+        let client_id = crypto::generate_sha1_hash();
+        let client_secret = crypto::generate_sha1_random();
+
+        let new_app = NewOAuthApp {
+            name,
+            user_id,
+            redirect_uri: redirect_uri,
+            client_id: &client_id,
+            client_secret: &client_secret,
+        };
+        let conn = db.get_db_conn()?;
+        insert(&new_app)
+            .into(apps::table)
+            .get_result::<OAuthApp>(&*conn)
+            .map_err(Into::into)
+    }
+
+    pub fn load_apps(db: &DB) -> AppResult<Vec<Self>> {
+        let conn = db.get_db_conn()?;
+        apps::table.load(&*conn).map_err(Into::into)
+    }
+
+    pub fn find_by_id(db: &DB, id: i32) -> AppResult<Option<Self>> {
+        let conn = db.get_db_conn()?;
+        apps::table
+            .filter(apps::dsl::id.eq(id))
+            .get_result(&*conn)
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn find_by_client_id(db: &DB, client_id: &str) -> AppResult<Option<Self>> {
         let conn = db.get_db_conn()?;
         apps::table
