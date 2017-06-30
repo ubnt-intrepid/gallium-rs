@@ -5,7 +5,10 @@ mod repository;
 mod users;
 
 use iron::prelude::*;
+use iron::Handler;
+use iron::method::Method;
 use mount::Mount;
+use router::Router;
 
 pub fn create_api_handler() -> Chain {
     let mut mount = Mount::new();
@@ -14,4 +17,22 @@ pub fn create_api_handler() -> Chain {
     mount.mount("/users", users::create_routes());
 
     Chain::new(mount)
+}
+
+
+
+trait Route {
+    fn route_path() -> &'static str;
+    fn route_method() -> Method;
+    fn route_id() -> &'static str;
+}
+
+trait RegisterRoute {
+    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self;
+}
+
+impl RegisterRoute for Router {
+    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self {
+        self.route(R::route_method(), R::route_path(), route, R::route_id())
+    }
 }

@@ -9,6 +9,7 @@ use iron::method::Method;
 use error::AppError;
 use db::DB;
 use models::User;
+use super::{Route, RegisterRoute};
 
 
 pub(super) fn create_routes() -> Chain {
@@ -141,23 +142,5 @@ impl From<User> for EncodableUser {
             name: val.name,
             created_at: val.created_at.format("%c").to_string(),
         }
-    }
-}
-
-
-
-trait Route {
-    fn route_path() -> &'static str;
-    fn route_method() -> Method;
-    fn route_id() -> &'static str;
-}
-
-trait RegisterRoute {
-    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self;
-}
-
-impl RegisterRoute for Router {
-    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self {
-        self.route(R::route_method(), R::route_path(), route, R::route_id())
     }
 }
