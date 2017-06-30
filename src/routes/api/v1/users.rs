@@ -32,7 +32,7 @@ impl Route for GetUsers {
     fn route_method() -> Method {
         Method::Get
     }
-    fn rotue_id() -> &'static str {
+    fn route_id() -> &'static str {
         "get_users"
     }
 }
@@ -61,7 +61,7 @@ impl Route for GetUser {
     fn route_method() -> Method {
         Method::Get
     }
-    fn rotue_id() -> &'static str {
+    fn route_id() -> &'static str {
         "get_user"
     }
 }
@@ -92,7 +92,7 @@ impl Route for CreateUser {
     fn route_method() -> Method {
         Method::Post
     }
-    fn rotue_id() -> &'static str {
+    fn route_id() -> &'static str {
         "create_user"
     }
 }
@@ -149,7 +149,7 @@ impl From<User> for EncodableUser {
 trait Route {
     fn route_path() -> &'static str;
     fn route_method() -> Method;
-    fn rotue_id() -> &'static str;
+    fn route_id() -> &'static str;
 }
 
 trait RegisterRoute {
@@ -158,6 +158,6 @@ trait RegisterRoute {
 
 impl RegisterRoute for Router {
     fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self {
-        self.route(R::route_method(), R::route_path(), route, R::rotue_id())
+        self.route(R::route_method(), R::route_path(), route, R::route_id())
     }
 }
