@@ -21,7 +21,7 @@ pub struct EncodableProject {
     pub created_at: String,
     pub user_id: i32,
     pub name: String,
-    pub description: String,
+    pub description: Option<String>,
 }
 
 impl From<Project> for EncodableProject {

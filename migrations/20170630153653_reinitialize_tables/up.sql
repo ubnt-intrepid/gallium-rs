@@ -1,19 +1,17 @@
 create table users (
-    id            serial    primary key
-  , name          text      not null unique
-  , email_address text      not null
-  , bcrypt_hash   text      not null
-  , created_at    timestamp not null default CURRENT_TIMESTAMP
-  , screen_name   text      not null default ''
-  , is_admin      boolean   not null default 'false'
+    id            serial      primary key
+  , created_at    timestamp   not null default CURRENT_TIMESTAMP
+  , name          text        not null unique
+  , screen_name   text
+  , bcrypt_hash   varchar(60) not null
 );
 
-create table public_keys (
+create table ssh_keys (
     id          serial    primary key
   , created_at  timestamp not null default CURRENT_TIMESTAMP
   , key         text      not null
   , user_id     integer   not null
-  , title       text      not null
+  , description text
   , foreign key (user_id) references users(id)
 );
 
@@ -22,14 +20,7 @@ create table projects (
   , created_at  timestamp not null default CURRENT_TIMESTAMP
   , user_id     integer   not null
   , name        text      not null
-  , description text      not null default ''
+  , description text
   , foreign key (user_id) references users(id)
 );
 
-create table access_tokens (
-    id            serial      primary key
-  , created_at    timestamp   not null default CURRENT_TIMESTAMP
-  , user_id       integer     not null
-  , hash          varchar(40) not null unique
-  , foreign key (user_id) references users(id)
-);

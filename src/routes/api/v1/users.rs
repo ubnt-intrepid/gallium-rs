@@ -13,7 +13,6 @@ use models::User;
 pub struct EncodableUser {
     id: i32,
     name: String,
-    email_address: String,
     created_at: String,
 }
 
@@ -22,7 +21,6 @@ impl From<User> for EncodableUser {
         EncodableUser {
             id: val.id,
             name: val.name,
-            email_address: val.email_address,
             created_at: val.created_at.format("%c").to_string(),
         }
     }
@@ -72,9 +70,7 @@ pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
         db,
         &params.name,
         &params.password,
-        &params.email_address,
         params.screen_name.as_ref().map(|s| s.as_str()),
-        params.is_admin.clone(),
     ).map_err(|err| IronError::new(err, status::InternalServerError))
         .map(EncodableUser::from)?;
 

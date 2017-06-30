@@ -7,8 +7,8 @@ use router::Router;
 use iron_json_response::JsonResponse;
 
 use error::AppError;
-use models::{PublicKey, NewPublicKey};
-use schema::public_keys;
+use models::{SshKey, NewSshKey};
+use schema::ssh_keys;
 
 use db::DB;
 
@@ -18,17 +18,17 @@ pub struct EncodablePublicKey {
     id: i32,
     created_at: String,
     user_id: i32,
-    title: String,
+    description: Option<String>,
     key: String,
 }
 
-impl From<PublicKey> for EncodablePublicKey {
-    fn from(val: PublicKey) -> Self {
+impl From<SshKey> for EncodablePublicKey {
+    fn from(val: SshKey) -> Self {
         EncodablePublicKey {
             id: val.id,
             created_at: val.created_at.format("%c").to_string(),
             user_id: val.user_id,
-            title: val.title,
+            description: val.description,
             key: val.key,
         }
     }
@@ -40,8 +40,8 @@ pub(super) fn get_keys(req: &mut Request) -> IronResult<Response> {
     let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let keys: Vec<EncodablePublicKey> = public_keys::table
-        .load::<PublicKey>(&*conn)
+    let keys: Vec<EncodablePublicKey> = ssh_keys::table
+        .load::<SshKey>(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .into_iter()
         .map(Into::into)
@@ -58,9 +58,9 @@ pub(super) fn get_key(req: &mut Request) -> IronResult<Response> {
     let conn = db.get_db_conn().map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
-    let key: EncodablePublicKey = public_keys::table
-        .filter(public_keys::dsl::id.eq(id))
-        .get_result::<PublicKey>(&*conn)
+    let key: EncodablePublicKey = ssh_keys::table
+        .filter(ssh_keys::dsl::id.eq(id))
+        .get_result::<SshKey>(&*conn)
         .map_err(|err| IronError::new(err, status::NotFound))?
         .into();
 
@@ -71,7 +71,7 @@ pub(super) fn add_key(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]
     struct Params {
         user_id: i32,
-        title: String,
+        description: Option<String>,
         key: String,
     }
     let params = req.get::<Struct<Params>>()
@@ -79,9 +79,9 @@ pub(super) fn add_key(req: &mut Request) -> IronResult<Response> {
         .and_then(|s| s)
         .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
 
-    let new_key = NewPublicKey {
+    let new_key = NewSshKey {
         user_id: params.user_id,
-        title: &params.title,
+        description: params.description.as_ref().map(|s| s.as_str()),
         key: &params.key,
     };
 
@@ -90,8 +90,8 @@ pub(super) fn add_key(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
     let inserted_key: EncodablePublicKey = insert(&new_key)
-        .into(public_keys::table)
-        .get_result::<PublicKey>(&*conn)
+        .into(ssh_keys::table)
+        .get_result::<SshKey>(&*conn)
         .map(Into::into)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
@@ -109,7 +109,7 @@ pub(super) fn delete_key(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    delete(public_keys::table.filter(public_keys::dsl::id.eq(id)))
+    delete(ssh_keys::table.filter(ssh_keys::dsl::id.eq(id)))
         .execute(&*conn)
         .map_err(|err| IronError::new(err, status::InternalServerError))?;
 

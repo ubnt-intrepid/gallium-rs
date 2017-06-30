@@ -9,8 +9,8 @@ use std::process::Command;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use diesel::prelude::*;
-use gallium::models::{Project, PublicKey};
-use gallium::schema::public_keys;
+use gallium::models::{Project, SshKey};
+use gallium::schema::ssh_keys;
 use gallium::config::Config;
 use gallium::db::DB;
 use gallium::models::repository::open_repository;
@@ -72,7 +72,7 @@ fn show(_m: &clap::ArgMatches) -> Result<(), String> {
     let db = DB::new(&config.database_url).unwrap();
     let conn = db.get_db_conn().unwrap();
 
-    let keys: Vec<PublicKey> = public_keys::table.load(&*conn).unwrap();
+    let keys: Vec<SshKey> = ssh_keys::table.load(&*conn).unwrap();
     for key in keys {
         println!(
             "command=\"/opt/gallium/bin/pubkey access --user-id={}\" {}",

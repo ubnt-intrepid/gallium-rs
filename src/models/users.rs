@@ -6,49 +6,36 @@ use iron::typemap::Key;
 
 use db::DB;
 use error::AppResult;
-use schema::{users, public_keys, projects};
+use schema::{users, ssh_keys, projects};
 
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
-#[has_many(public_keys)]
+#[has_many(ssh_keys)]
 #[has_many(projects)]
 pub struct User {
     pub id: i32,
-    pub name: String,
-    pub email_address: String,
-    pub bcrypt_hash: String,
     pub created_at: NaiveDateTime,
-    pub screen_name: String,
-    pub is_admin: bool,
+    pub name: String,
+    pub screen_name: Option<String>,
+    pub bcrypt_hash: String,
 }
 
 #[derive(Insertable)]
 #[table_name = "users"]
 struct NewUser<'a> {
     name: &'a str,
-    email_address: &'a str,
-    bcrypt_hash: &'a str,
     screen_name: Option<&'a str>,
-    is_admin: Option<bool>,
+    bcrypt_hash: &'a str,
 }
 
 
 impl User {
-    pub fn create(
-        db: &DB,
-        name: &str,
-        password: &str,
-        email_address: &str,
-        screen_name: Option<&str>,
-        is_admin: Option<bool>,
-    ) -> AppResult<Self> {
+    pub fn create(db: &DB, name: &str, password: &str, screen_name: Option<&str>) -> AppResult<Self> {
         let bcrypt_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
         let new_user = NewUser {
             name: name,
-            email_address: email_address,
             bcrypt_hash: &bcrypt_hash,
             screen_name: screen_name,
-            is_admin: is_admin,
         };
 
         let conn = db.get_db_conn()?;
