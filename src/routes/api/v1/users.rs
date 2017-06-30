@@ -1,8 +1,10 @@
 use bodyparser::Struct;
 use iron::prelude::*;
+use iron::Handler;
 use iron::status;
 use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 use router::Router;
+use iron::method::Method;
 
 use error::AppError;
 use db::DB;
@@ -11,15 +13,118 @@ use models::User;
 
 pub(super) fn create_routes() -> Chain {
     let mut router = Router::new();
-
-    router.get("/", get_users, "get_users");
-    router.get("/:id", get_user, "get_user");
-    router.post("/", create_user, "create_user");
+    router.register(GetUsers);
+    router.register(GetUser);
+    router.register(CreateUser);
 
     let mut chain = Chain::new(router);
     chain.link_after(JsonResponseMiddleware::new());
     chain
 }
+
+
+struct GetUsers;
+
+impl Route for GetUsers {
+    fn route_path() -> &'static str {
+        "/"
+    }
+    fn route_method() -> Method {
+        Method::Get
+    }
+    fn rotue_id() -> &'static str {
+        "get_users"
+    }
+}
+
+impl Handler for GetUsers {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let db = req.extensions.get::<DB>().unwrap();
+        let users: Vec<_> = User::load_users(db)
+            .map_err(|err| IronError::new(err, status::InternalServerError))?
+            .into_iter()
+            .map(EncodableUser::from)
+            .collect();
+
+        Ok(Response::with((status::Ok, JsonResponse::json(users))))
+    }
+}
+
+
+
+struct GetUser;
+
+impl Route for GetUser {
+    fn route_path() -> &'static str {
+        "/:id"
+    }
+    fn route_method() -> Method {
+        Method::Get
+    }
+    fn rotue_id() -> &'static str {
+        "get_user"
+    }
+}
+
+impl Handler for GetUser {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let router = req.extensions.get::<Router>().unwrap();
+        let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
+
+        let db = req.extensions.get::<DB>().unwrap();
+        let user: EncodableUser = User::find_by_id(db, id)
+            .map_err(|err| IronError::new(err, status::InternalServerError))?
+            .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?
+            .into();
+
+        Ok(Response::with((status::Ok, JsonResponse::json(user))))
+    }
+}
+
+
+
+struct CreateUser;
+
+impl Route for CreateUser {
+    fn route_path() -> &'static str {
+        "/"
+    }
+    fn route_method() -> Method {
+        Method::Post
+    }
+    fn rotue_id() -> &'static str {
+        "create_user"
+    }
+}
+
+impl Handler for CreateUser {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        #[derive(Clone, Deserialize)]
+        struct Params {
+            name: String,
+            email_address: String,
+            password: String,
+            screen_name: Option<String>,
+            is_admin: Option<bool>,
+        }
+        let params = req.get::<Struct<Params>>()
+            .ok()
+            .and_then(|s| s)
+            .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
+
+        let db = req.extensions.get::<DB>().unwrap();
+        let user = User::create(
+            db,
+            &params.name,
+            &params.password,
+            params.screen_name.as_ref().map(|s| s.as_str()),
+        ).map_err(|err| IronError::new(err, status::InternalServerError))
+            .map(EncodableUser::from)?;
+
+        Ok(Response::with((status::Created, JsonResponse::json(user))))
+    }
+}
+
 
 
 #[derive(Serialize)]
@@ -40,52 +145,19 @@ impl From<User> for EncodableUser {
 }
 
 
-pub(super) fn get_users(req: &mut Request) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let users: Vec<_> = User::load_users(db)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .into_iter()
-        .map(EncodableUser::from)
-        .collect();
 
-    Ok(Response::with((status::Ok, JsonResponse::json(users))))
+trait Route {
+    fn route_path() -> &'static str;
+    fn route_method() -> Method;
+    fn rotue_id() -> &'static str;
 }
 
-pub(super) fn get_user(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-
-    let db = req.extensions.get::<DB>().unwrap();
-    let user: EncodableUser = User::find_by_id(db, id)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?
-        .into();
-
-    Ok(Response::with((status::Ok, JsonResponse::json(user))))
+trait RegisterRoute {
+    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self;
 }
 
-pub(super) fn create_user(req: &mut Request) -> IronResult<Response> {
-    #[derive(Clone, Deserialize)]
-    struct Params {
-        name: String,
-        email_address: String,
-        password: String,
-        screen_name: Option<String>,
-        is_admin: Option<bool>,
+impl RegisterRoute for Router {
+    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self {
+        self.route(R::route_method(), R::route_path(), route, R::rotue_id())
     }
-    let params = req.get::<Struct<Params>>()
-        .ok()
-        .and_then(|s| s)
-        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
-
-    let db = req.extensions.get::<DB>().unwrap();
-    let user = User::create(
-        db,
-        &params.name,
-        &params.password,
-        params.screen_name.as_ref().map(|s| s.as_str()),
-    ).map_err(|err| IronError::new(err, status::InternalServerError))
-        .map(EncodableUser::from)?;
-
-    Ok(Response::with((status::Created, JsonResponse::json(user))))
 }
