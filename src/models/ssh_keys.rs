@@ -12,10 +12,10 @@ pub struct SshKey {
     pub description: Option<String>,
 }
 
-#[derive(Insertable)]
+#[derive(Clone, Debug, Insertable, Deserialize)]
 #[table_name = "ssh_keys"]
-pub struct NewSshKey<'a> {
-    pub key: &'a str,
+pub struct NewSshKey {
+    pub key: String,
     pub user_id: i32,
-    pub description: Option<&'a str>,
+    pub description: Option<String>,
 }

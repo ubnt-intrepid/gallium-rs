@@ -68,22 +68,10 @@ pub(super) fn get_key(req: &mut Request) -> IronResult<Response> {
 }
 
 pub(super) fn add_key(req: &mut Request) -> IronResult<Response> {
-    #[derive(Clone, Deserialize)]
-    struct Params {
-        user_id: i32,
-        description: Option<String>,
-        key: String,
-    }
-    let params = req.get::<Struct<Params>>()
+    let new_key = req.get::<Struct<NewSshKey>>()
         .ok()
         .and_then(|s| s)
         .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
-
-    let new_key = NewSshKey {
-        user_id: params.user_id,
-        description: params.description.as_ref().map(|s| s.as_str()),
-        key: &params.key,
-    };
 
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(|err| {
