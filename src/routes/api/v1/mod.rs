@@ -3,7 +3,6 @@ mod keys;
 mod projects;
 mod repository;
 mod users;
-mod oauth_apps;
 
 use iron::prelude::*;
 use router::Router;
@@ -11,27 +10,6 @@ use iron_json_response::JsonResponseMiddleware;
 
 pub fn create_api_handler() -> Chain {
     let mut router = Router::new();
-
-    router.get(
-        "/oauth_apps",
-        oauth_apps::get_app_list,
-        "oauth_apps/get_app_list",
-    );
-    router.get(
-        "/oauth_apps/:id",
-        oauth_apps::get_client,
-        "oauth_apps/get_client",
-    );
-    router.delete(
-        "/oauth_apps/:id",
-        oauth_apps::delete_client,
-        "oauth_apps/delete_client",
-    );
-    router.post(
-        "/oauth_apps",
-        oauth_apps::register_app,
-        "oauth_apps/register_application",
-    );
 
     router.get("/keys", keys::get_keys, "keys/get_keys");
     router.get("/keys/:id", keys::get_key, "keys/get_key");

@@ -5,20 +5,7 @@ table! {
         id -> Int4,
         created_at -> Timestamp,
         user_id -> Int4,
-        oauth_app_id -> Int4,
         hash -> Varchar,
-    }
-}
-
-table! {
-    apps (id) {
-        id -> Int4,
-        name -> Text,
-        created_at -> Timestamp,
-        client_id -> Varchar,
-        redirect_uri -> Text,
-        client_secret -> Varchar,
-        user_id -> Int4,
     }
 }
 
