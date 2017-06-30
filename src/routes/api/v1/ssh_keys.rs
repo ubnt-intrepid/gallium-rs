@@ -4,7 +4,7 @@ use iron::prelude::*;
 use iron::status;
 use bodyparser::Struct;
 use router::Router;
-use iron_json_response::JsonResponse;
+use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 
 use error::AppError;
 use models::{SshKey, NewSshKey};
@@ -12,6 +12,18 @@ use schema::ssh_keys;
 
 use db::DB;
 
+
+pub(super) fn create_routes() -> Chain {
+    let mut router = Router::new();
+    router.get("/", get_keys, "get_keys");
+    router.get("/:id", get_key, "get_key");
+    router.post("/", add_key, "add_key");
+    router.delete("/:id", delete_key, "delete_key");
+
+    let mut chain = Chain::new(router);
+    chain.link_after(JsonResponseMiddleware::new());
+    chain
+}
 
 #[derive(Serialize)]
 pub struct EncodablePublicKey {

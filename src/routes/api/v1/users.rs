@@ -1,12 +1,25 @@
 use bodyparser::Struct;
 use iron::prelude::*;
 use iron::status;
-use iron_json_response::JsonResponse;
+use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 use router::Router;
 
 use error::AppError;
 use db::DB;
 use models::User;
+
+
+pub(super) fn create_routes() -> Chain {
+    let mut router = Router::new();
+
+    router.get("/", get_users, "get_users");
+    router.get("/:id", get_user, "get_user");
+    router.post("/", create_user, "create_user");
+
+    let mut chain = Chain::new(router);
+    chain.link_after(JsonResponseMiddleware::new());
+    chain
+}
 
 
 #[derive(Serialize)]

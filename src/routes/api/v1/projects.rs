@@ -4,7 +4,7 @@ use iron::prelude::*;
 use iron::status;
 use bodyparser::Struct;
 use router::Router;
-use iron_json_response::JsonResponse;
+use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 
 use error::{AppResult, AppError};
 use models::{Project, NewProject, Repository};
@@ -13,6 +13,25 @@ use schema::{users, projects};
 
 use db::DB;
 use config::Config;
+
+
+pub(super) fn create_routes() -> Chain {
+    let mut router = Router::new();
+    router.get("/", get_projecs, "get_projects");
+    router.get("/:id", get_project, "get_project");
+    router.post("/", create_project, "create_project");
+    router.delete("/:id", remove_project, "remove_project");
+
+    router.get(
+        "/:id/repository/tree",
+        super::repository::show_tree,
+        "show_tree",
+    );
+
+    let mut chain = Chain::new(router);
+    chain.link_after(JsonResponseMiddleware::new());
+    chain
+}
 
 
 #[derive(Debug, Serialize)]
