@@ -29,7 +29,7 @@ impl Route for GetProjects {
         Method::Get
     }
     fn route_path() -> &'static str {
-        "/"
+        "/projects"
     }
 }
 
@@ -71,7 +71,7 @@ impl Route for GetProject {
         Method::Get
     }
     fn route_path() -> &'static str {
-        "/:id"
+        "/projects/:id"
     }
 }
 
@@ -114,7 +114,7 @@ impl Route for CreateProject {
         Method::Post
     }
     fn route_path() -> &'static str {
-        "/"
+        "/projects"
     }
 }
 
@@ -191,7 +191,7 @@ impl Route for DeleteProject {
         Method::Delete
     }
     fn route_path() -> &'static str {
-        "/:id"
+        "/projects/:id"
     }
 }
 

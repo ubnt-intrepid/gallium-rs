@@ -15,14 +15,14 @@ use super::Route;
 pub(super) struct GetUsers;
 
 impl Route for GetUsers {
-    fn route_path() -> &'static str {
-        "/"
-    }
     fn route_method() -> Method {
         Method::Get
     }
     fn route_id() -> &'static str {
         "get_users"
+    }
+    fn route_path() -> &'static str {
+        "/users"
     }
 }
 
@@ -52,14 +52,14 @@ impl Handler for GetUsers {
 pub(super) struct GetUser;
 
 impl Route for GetUser {
-    fn route_path() -> &'static str {
-        "/:id"
-    }
     fn route_method() -> Method {
         Method::Get
     }
     fn route_id() -> &'static str {
         "get_user"
+    }
+    fn route_path() -> &'static str {
+        "/users/:id"
     }
 }
 
@@ -91,14 +91,14 @@ impl Handler for GetUser {
 pub(super) struct CreateUser;
 
 impl Route for CreateUser {
-    fn route_path() -> &'static str {
-        "/"
-    }
     fn route_method() -> Method {
         Method::Post
     }
     fn route_id() -> &'static str {
         "create_user"
+    }
+    fn route_path() -> &'static str {
+        "/users"
     }
 }
 

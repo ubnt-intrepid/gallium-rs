@@ -21,11 +21,11 @@ impl Route for GetKeys {
     fn route_id() -> &'static str {
         "get_keys"
     }
-    fn route_path() -> &'static str {
-        "/"
-    }
     fn route_method() -> Method {
         Method::Get
+    }
+    fn route_path() -> &'static str {
+        "/ssh_keys"
     }
 }
 
@@ -63,11 +63,11 @@ impl Route for GetKey {
     fn route_id() -> &'static str {
         "get_key"
     }
-    fn route_path() -> &'static str {
-        "/:id"
-    }
     fn route_method() -> Method {
         Method::Get
+    }
+    fn route_path() -> &'static str {
+        "/ssh_keys/:id"
     }
 }
 
@@ -106,11 +106,11 @@ impl Route for AddKey {
     fn route_id() -> &'static str {
         "add_key"
     }
-    fn route_path() -> &'static str {
-        "/"
-    }
     fn route_method() -> Method {
         Method::Post
+    }
+    fn route_path() -> &'static str {
+        "/ssh_keys"
     }
 }
 
@@ -153,11 +153,11 @@ impl Route for DeleteKey {
     fn route_id() -> &'static str {
         "delete_key"
     }
-    fn route_path() -> &'static str {
-        "/:id"
-    }
     fn route_method() -> Method {
         Method::Delete
+    }
+    fn route_path() -> &'static str {
+        "/ssh_keys/:id"
     }
 }
 

@@ -24,7 +24,7 @@ impl Route for ShowTree {
         Method::Get
     }
     fn route_path() -> &'static str {
-        "/:id/repository/tree"
+        "/projects/:id/repository/tree"
     }
 }
 
