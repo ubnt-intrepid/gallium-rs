@@ -1,4 +1,4 @@
-use diesel::{insert, delete};
+use diesel::delete;
 use diesel::prelude::*;
 use iron::prelude::*;
 use iron::status;
@@ -6,10 +6,10 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 
-use error::{AppResult, AppError};
-use models::{Project, NewProject, Repository};
+use error::AppError;
+use models::Project;
 use models::repository;
-use schema::{users, projects};
+use schema::projects;
 
 use db::DB;
 use config::Config;
@@ -143,39 +143,18 @@ impl Handler for CreateProject {
 
         let db = req.extensions.get::<DB>().unwrap();
         let config = req.extensions.get::<Config>().unwrap();
-        if repository::open_repository(db, config, &params.user, &params.name).is_ok() {
-            return Err(IronError::new(
-                AppError::from("The repository has already created."),
-                status::Conflict,
-            ));
-        }
 
-        create_new_repository(config, &params.user, &params.name)
-            .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-        let conn = db.get_db_conn().map_err(|err| {
-            IronError::new(err, status::InternalServerError)
-        })?;
-
-        let user_id: i32 = users::table
-            .filter(users::dsl::name.eq(&params.user))
-            .select(users::dsl::id)
-            .get_result(&*conn)
-            .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-        let new_project = NewProject {
-            name: &params.name,
-            user_id,
-            description: params.description.as_ref().map(|s| s.as_str()),
-        };
-        let inserted_project = insert(&new_project)
-            .into(projects::table)
-            .get_result::<Project>(&*conn)
-            .map(EncodableProject::from)
+        let project = Project::create(
+            db,
+            config,
+            &params.user,
+            &params.name,
+            params.description.as_ref().map(|s| s.as_str()),
+        ).map(EncodableProject::from)
             .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
         Ok(Response::with(
-            (status::Created, JsonResponse::json(inserted_project)),
+            (status::Created, JsonResponse::json(project)),
         ))
     }
 }
@@ -256,10 +235,4 @@ impl From<Project> for EncodableProject {
             description: val.description,
         }
     }
-}
-
-fn create_new_repository(config: &Config, user: &str, project: &str) -> AppResult<()> {
-    let repo_path = config.repository_path(user, project);
-    Repository::create(&repo_path)?;
-    Ok(())
 }
