@@ -1,4 +1,5 @@
 use iron::prelude::*;
+use iron::Handler;
 use iron::status;
 use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 use router::Router;
@@ -8,25 +9,10 @@ use db::DB;
 use config::Config;
 use models::repository;
 
-use super::Route;
-use iron::method::Method;
-use iron::Handler;
 
-
-// TODO: use `git ls-tree`
+#[derive(Route)]
+#[get(path = "/projects/:id/repository/tree")]
 pub(super) struct ShowTree;
-
-impl Route for ShowTree {
-    fn route_id() -> &'static str {
-        "show_tree"
-    }
-    fn route_method() -> Method {
-        Method::Get
-    }
-    fn route_path() -> &'static str {
-        "/projects/:id/repository/tree"
-    }
-}
 
 impl Into<Chain> for ShowTree {
     fn into(self) -> Chain {
@@ -37,6 +23,7 @@ impl Into<Chain> for ShowTree {
 }
 
 impl Handler for ShowTree {
+    // TODO: use `git ls-tree`
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         let router = req.extensions.get::<Router>().unwrap();
         let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();

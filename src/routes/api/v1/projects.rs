@@ -14,24 +14,12 @@ use schema::projects;
 use db::DB;
 use config::Config;
 
-use super::Route;
-use iron::method::Method;
 use iron::Handler;
 
 
+#[derive(Route)]
+#[get(path = "/projects")]
 pub(super) struct GetProjects;
-
-impl Route for GetProjects {
-    fn route_id() -> &'static str {
-        "get_projects"
-    }
-    fn route_method() -> Method {
-        Method::Get
-    }
-    fn route_path() -> &'static str {
-        "/projects"
-    }
-}
 
 impl Into<Chain> for GetProjects {
     fn into(self) -> Chain {
@@ -61,19 +49,9 @@ impl Handler for GetProjects {
 
 
 
+#[derive(Route)]
+#[get(path = "/projects/:id")]
 pub(super) struct GetProject;
-
-impl Route for GetProject {
-    fn route_id() -> &'static str {
-        "get_project"
-    }
-    fn route_method() -> Method {
-        Method::Get
-    }
-    fn route_path() -> &'static str {
-        "/projects/:id"
-    }
-}
 
 impl Into<Chain> for GetProject {
     fn into(self) -> Chain {
@@ -104,19 +82,9 @@ impl Handler for GetProject {
 }
 
 
+#[derive(Route)]
+#[post(path = "/projects")]
 pub(super) struct CreateProject;
-
-impl Route for CreateProject {
-    fn route_id() -> &'static str {
-        "create_project"
-    }
-    fn route_method() -> Method {
-        Method::Post
-    }
-    fn route_path() -> &'static str {
-        "/projects"
-    }
-}
 
 impl Into<Chain> for CreateProject {
     fn into(self) -> Chain {
@@ -160,19 +128,9 @@ impl Handler for CreateProject {
 }
 
 
+#[derive(Route)]
+#[delete(path = "/projects/:id")]
 pub(super) struct DeleteProject;
-
-impl Route for DeleteProject {
-    fn route_id() -> &'static str {
-        "delete_project"
-    }
-    fn route_method() -> Method {
-        Method::Delete
-    }
-    fn route_path() -> &'static str {
-        "/projects/:id"
-    }
-}
 
 impl Into<Chain> for DeleteProject {
     fn into(self) -> Chain {

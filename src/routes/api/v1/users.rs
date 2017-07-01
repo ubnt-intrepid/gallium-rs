@@ -4,27 +4,15 @@ use iron::Handler;
 use iron::status;
 use iron_json_response::{JsonResponse, JsonResponseMiddleware};
 use router::Router;
-use iron::method::Method;
 
 use error::AppError;
 use db::DB;
 use models::User;
-use super::Route;
 
 
+#[derive(Route)]
+#[get(path = "/users")]
 pub(super) struct GetUsers;
-
-impl Route for GetUsers {
-    fn route_method() -> Method {
-        Method::Get
-    }
-    fn route_id() -> &'static str {
-        "get_users"
-    }
-    fn route_path() -> &'static str {
-        "/users"
-    }
-}
 
 impl Into<Chain> for GetUsers {
     fn into(self) -> Chain {
@@ -49,19 +37,9 @@ impl Handler for GetUsers {
 
 
 
+#[derive(Route)]
+#[get(path = "/users/:id")]
 pub(super) struct GetUser;
-
-impl Route for GetUser {
-    fn route_method() -> Method {
-        Method::Get
-    }
-    fn route_id() -> &'static str {
-        "get_user"
-    }
-    fn route_path() -> &'static str {
-        "/users/:id"
-    }
-}
 
 impl Into<Chain> for GetUser {
     fn into(self) -> Chain {
@@ -88,19 +66,9 @@ impl Handler for GetUser {
 
 
 
+#[derive(Route)]
+#[post(path = "/users")]
 pub(super) struct CreateUser;
-
-impl Route for CreateUser {
-    fn route_method() -> Method {
-        Method::Post
-    }
-    fn route_id() -> &'static str {
-        "create_user"
-    }
-    fn route_path() -> &'static str {
-        "/users"
-    }
-}
 
 impl Into<Chain> for CreateUser {
     fn into(self) -> Chain {

@@ -28,6 +28,9 @@ extern crate uuid;
 extern crate error_chain;
 extern crate ring;
 extern crate url;
+extern crate iron_router_ext;
+#[macro_use]
+extern crate iron_router_codegen;
 
 pub mod config;
 pub mod crypto;

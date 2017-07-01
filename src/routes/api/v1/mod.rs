@@ -5,8 +5,9 @@ mod repository;
 mod users;
 
 use iron::prelude::*;
-use iron::method::Method;
 use router::Router;
+use iron_router_ext::RegisterRoute;
+
 
 pub fn create_api_handler() -> Chain {
     let mut router = Router::new();
@@ -23,26 +24,4 @@ pub fn create_api_handler() -> Chain {
     router.register(users::GetUser);
     router.register(users::CreateUser);
     Chain::new(router)
-}
-
-
-trait Route {
-    fn route_path() -> &'static str;
-    fn route_method() -> Method;
-    fn route_id() -> &'static str;
-}
-
-trait RegisterRoute {
-    fn register<R: Route + Into<Chain>>(&mut self, route: R) -> &mut Self;
-}
-
-impl RegisterRoute for Router {
-    fn register<R: Route + Into<Chain>>(&mut self, route: R) -> &mut Self {
-        self.route(
-            R::route_method(),
-            R::route_path(),
-            route.into(),
-            R::route_id(),
-        )
-    }
 }

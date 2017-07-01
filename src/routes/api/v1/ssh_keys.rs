@@ -2,7 +2,6 @@ use diesel::{insert, delete};
 use diesel::prelude::*;
 use iron::prelude::*;
 use iron::Handler;
-use iron::method::Method;
 use iron::status;
 use bodyparser::Struct;
 use router::Router;
@@ -12,22 +11,11 @@ use error::AppError;
 use models::{SshKey, NewSshKey};
 use schema::ssh_keys;
 use db::DB;
-use super::Route;
 
 
+#[derive(Route)]
+#[get(path = "/ssh_keys")]
 pub(super) struct GetKeys;
-
-impl Route for GetKeys {
-    fn route_id() -> &'static str {
-        "get_keys"
-    }
-    fn route_method() -> Method {
-        Method::Get
-    }
-    fn route_path() -> &'static str {
-        "/ssh_keys"
-    }
-}
 
 impl Into<Chain> for GetKeys {
     fn into(self) -> Chain {
@@ -57,19 +45,9 @@ impl Handler for GetKeys {
 
 
 
+#[derive(Route)]
+#[get(path = "/ssh_keys/:id")]
 pub(super) struct GetKey;
-
-impl Route for GetKey {
-    fn route_id() -> &'static str {
-        "get_key"
-    }
-    fn route_method() -> Method {
-        Method::Get
-    }
-    fn route_path() -> &'static str {
-        "/ssh_keys/:id"
-    }
-}
 
 impl Into<Chain> for GetKey {
     fn into(self) -> Chain {
@@ -100,19 +78,9 @@ impl Handler for GetKey {
 
 
 
+#[derive(Route)]
+#[post(path = "/ssh_keys")]
 pub(super) struct AddKey;
-
-impl Route for AddKey {
-    fn route_id() -> &'static str {
-        "add_key"
-    }
-    fn route_method() -> Method {
-        Method::Post
-    }
-    fn route_path() -> &'static str {
-        "/ssh_keys"
-    }
-}
 
 impl Into<Chain> for AddKey {
     fn into(self) -> Chain {
@@ -147,19 +115,9 @@ impl Handler for AddKey {
 
 
 
+#[derive(Route)]
+#[delete(path = "/ssh_keys/:id")]
 pub(super) struct DeleteKey;
-
-impl Route for DeleteKey {
-    fn route_id() -> &'static str {
-        "delete_key"
-    }
-    fn route_method() -> Method {
-        Method::Delete
-    }
-    fn route_path() -> &'static str {
-        "/ssh_keys/:id"
-    }
-}
 
 impl Into<Chain> for DeleteKey {
     fn into(self) -> Chain {
