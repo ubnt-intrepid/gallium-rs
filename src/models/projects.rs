@@ -2,7 +2,6 @@ use chrono::NaiveDateTime;
 use schema::{users, projects};
 use super::users::User;
 use db::DB;
-use config::Config;
 use error::{AppResult, AppError};
 use super::repository;
 
@@ -21,11 +20,11 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn create(db: &DB, config: &Config, user: &str, name: &str, description: Option<&str>) -> AppResult<Self> {
-        if repository::open_repository(db, config, user, name).is_ok() {
+    pub fn create(db: &DB, user: &str, name: &str, description: Option<&str>) -> AppResult<Self> {
+        if repository::open_repository(db, user, name).is_ok() {
             return Err(AppError::from("The repository has already created."));
         }
-        create_new_repository(config, user, name)?;
+        repository::Repository::create(format!("{}/{}", user, name))?;
 
         let conn = db.get_db_conn()?;
 
@@ -53,10 +52,4 @@ pub struct NewProject<'a> {
     pub user_id: i32,
     pub name: &'a str,
     pub description: Option<&'a str>,
-}
-
-fn create_new_repository(config: &Config, user: &str, project: &str) -> AppResult<()> {
-    let repo_path = config.repository_path(user, project);
-    repository::Repository::create(&repo_path)?;
-    Ok(())
 }

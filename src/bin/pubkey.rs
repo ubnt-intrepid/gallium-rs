@@ -53,7 +53,7 @@ fn access(m: &clap::ArgMatches) -> Result<(), String> {
     )?;
     let (action, user, project) = parse_ssh_command(&s)?;
 
-    let (_user, project, repo) = open_repository(&db, &config, &user, &project)
+    let (_user, project, repo) = open_repository(&db, &user, &project)
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "Failed to open repository".to_owned())?;
 
@@ -69,6 +69,8 @@ fn access(m: &clap::ArgMatches) -> Result<(), String> {
 
 fn show(_m: &clap::ArgMatches) -> Result<(), String> {
     let config = Config::load().unwrap();
+    env::set_current_dir(&config.repository_root).unwrap();
+
     let db = DB::new(&config.database_url).unwrap();
     let conn = db.get_db_conn().unwrap();
 

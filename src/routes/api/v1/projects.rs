@@ -74,11 +74,9 @@ fn create_project(req: &mut Request) -> IronResult<Response> {
         .ok_or_else(|| error::bad_request(""))?;
 
     let db = req.extensions.get::<DB>().unwrap();
-    let config = req.extensions.get::<Config>().unwrap();
 
     let project: EncodableProject = Project::create(
         db,
-        config,
         &params.user,
         &params.name,
         params.description.as_ref().map(|s| s.as_str()),

@@ -11,7 +11,6 @@ use error::AppError;
 use models::{User, Project, Repository};
 use super::WWWAuthenticate;
 use db::DB;
-use config::Config;
 use models::repository;
 use iron_router_ext::RegisterRoute;
 
@@ -65,9 +64,8 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 
 fn open_repository(req: &mut Request) -> IronResult<(User, Project, Repository)> {
     let db = req.extensions.get::<DB>().unwrap();
-    let config = req.extensions.get::<Config>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    repository::open_repository(&db, &config, user, project)
+    repository::open_repository(&db, user, project)
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))
 }

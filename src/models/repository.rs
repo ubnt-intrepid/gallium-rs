@@ -131,12 +131,7 @@ impl Repository {
 }
 
 
-pub fn open_repository(
-    db: &DB,
-    config: &Config,
-    user: &str,
-    project: &str,
-) -> AppResult<Option<(User, Project, Repository)>> {
+pub fn open_repository(db: &DB, user: &str, project: &str) -> AppResult<Option<(User, Project, Repository)>> {
     let conn = db.get_db_conn()?;
     let result = users::table
         .inner_join(projects::table)
@@ -146,7 +141,7 @@ pub fn open_repository(
         .optional()?;
     match result {
         Some((user, project)) => {
-            let repo_path = config.repository_path(&user.name, &project.name);
+            let repo_path = Path::new(&format!("{}/{}", user.name, project.name)).to_path_buf();
             if !repo_path.is_dir() {
                 return Err("".into());
             }

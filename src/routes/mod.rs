@@ -16,8 +16,7 @@ header! {
     (WWWAuthenticate, "WWW-Authenticate") => [String]
 }
 
-pub fn create_handler() -> AppResult<Chain> {
-    let config = Config::load()?;
+pub fn create_handler(config: Config) -> AppResult<Chain> {
     let app = AppMiddleware::new(config)?;
 
     let mut mount = Mount::new();
