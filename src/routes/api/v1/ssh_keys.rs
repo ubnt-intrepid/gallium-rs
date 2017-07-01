@@ -1,11 +1,10 @@
 use diesel::{insert, delete};
 use diesel::prelude::*;
 use iron::prelude::*;
-use iron::Handler;
 use iron::status;
 use bodyparser::Struct;
 use router::Router;
-use iron_json_response::{JsonResponse, JsonResponseMiddleware};
+use iron_json_response::JsonResponse;
 
 use error::AppError;
 use models::{SshKey, NewSshKey};
@@ -14,137 +13,96 @@ use db::DB;
 
 
 #[derive(Route)]
-#[get(path = "/ssh_keys")]
+#[get(path = "/ssh_keys", handler = "get_ssh_keys")]
 pub(super) struct GetKeys;
 
-impl Into<Chain> for GetKeys {
-    fn into(self) -> Chain {
-        let mut chain = Chain::new(self);
-        chain.link_after(JsonResponseMiddleware::new());
-        chain
+fn get_ssh_keys(req: &mut Request) -> IronResult<Response> {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+    let keys: Vec<EncodablePublicKey> = ssh_keys::table
+        .load::<SshKey>(&*conn)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .into_iter()
+        .map(Into::into)
+        .collect();
 
-    }
-}
-
-impl Handler for GetKeys {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let db = req.extensions.get::<DB>().unwrap();
-        let conn = db.get_db_conn().map_err(|err| {
-            IronError::new(err, status::InternalServerError)
-        })?;
-        let keys: Vec<EncodablePublicKey> = ssh_keys::table
-            .load::<SshKey>(&*conn)
-            .map_err(|err| IronError::new(err, status::InternalServerError))?
-            .into_iter()
-            .map(Into::into)
-            .collect();
-
-        Ok(Response::with((status::Ok, JsonResponse::json(&keys))))
-    }
+    Ok(Response::with((status::Ok, JsonResponse::json(&keys))))
 }
 
 
 
 #[derive(Route)]
-#[get(path = "/ssh_keys/:id")]
+#[get(path = "/ssh_keys/:id", handler = "get_ssh_key")]
 pub(super) struct GetKey;
 
-impl Into<Chain> for GetKey {
-    fn into(self) -> Chain {
-        let mut chain = Chain::new(self);
-        chain.link_after(JsonResponseMiddleware::new());
-        chain
-    }
-}
+fn get_ssh_key(req: &mut Request) -> IronResult<Response> {
+    let router = req.extensions.get::<Router>().unwrap();
+    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-impl Handler for GetKey {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let router = req.extensions.get::<Router>().unwrap();
-        let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+    let key: EncodablePublicKey = ssh_keys::table
+        .filter(ssh_keys::dsl::id.eq(id))
+        .get_result::<SshKey>(&*conn)
+        .map_err(|err| IronError::new(err, status::NotFound))?
+        .into();
 
-        let db = req.extensions.get::<DB>().unwrap();
-        let conn = db.get_db_conn().map_err(|err| {
-            IronError::new(err, status::InternalServerError)
-        })?;
-        let key: EncodablePublicKey = ssh_keys::table
-            .filter(ssh_keys::dsl::id.eq(id))
-            .get_result::<SshKey>(&*conn)
-            .map_err(|err| IronError::new(err, status::NotFound))?
-            .into();
-
-        Ok(Response::with((status::Ok, JsonResponse::json(&key))))
-    }
+    Ok(Response::with((status::Ok, JsonResponse::json(&key))))
 }
 
 
 
 #[derive(Route)]
-#[post(path = "/ssh_keys")]
+#[post(path = "/ssh_keys", handler = "add_ssh_key")]
 pub(super) struct AddKey;
 
-impl Into<Chain> for AddKey {
-    fn into(self) -> Chain {
-        let mut chain = Chain::new(self);
-        chain.link_after(JsonResponseMiddleware::new());
-        chain
-    }
-}
+fn add_ssh_key(req: &mut Request) -> IronResult<Response> {
+    let new_key = req.get::<Struct<NewSshKey>>()
+        .ok()
+        .and_then(|s| s)
+        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
 
-impl Handler for AddKey {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let new_key = req.get::<Struct<NewSshKey>>()
-            .ok()
-            .and_then(|s| s)
-            .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+    let inserted_key: EncodablePublicKey = insert(&new_key)
+        .into(ssh_keys::table)
+        .get_result::<SshKey>(&*conn)
+        .map(Into::into)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
-        let db = req.extensions.get::<DB>().unwrap();
-        let conn = db.get_db_conn().map_err(|err| {
-            IronError::new(err, status::InternalServerError)
-        })?;
-        let inserted_key: EncodablePublicKey = insert(&new_key)
-            .into(ssh_keys::table)
-            .get_result::<SshKey>(&*conn)
-            .map(Into::into)
-            .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-        Ok(Response::with(
-            (status::Created, JsonResponse::json(&inserted_key)),
-        ))
-    }
+    Ok(Response::with(
+        (status::Created, JsonResponse::json(&inserted_key)),
+    ))
 }
 
 
 
 #[derive(Route)]
-#[delete(path = "/ssh_keys/:id")]
+#[delete(path = "/ssh_keys/:id", handler = "delete_ssh_key")]
 pub(super) struct DeleteKey;
 
-impl Into<Chain> for DeleteKey {
-    fn into(self) -> Chain {
-        let mut chain = Chain::new(self);
-        chain.link_after(JsonResponseMiddleware::new());
-        chain
-    }
-}
+fn delete_ssh_key(req: &mut Request) -> IronResult<Response> {
+    let router = req.extensions.get::<Router>().unwrap();
+    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
-impl Handler for DeleteKey {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let router = req.extensions.get::<Router>().unwrap();
-        let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
 
-        let db = req.extensions.get::<DB>().unwrap();
-        let conn = db.get_db_conn().map_err(|err| {
-            IronError::new(err, status::InternalServerError)
-        })?;
+    delete(ssh_keys::table.filter(ssh_keys::dsl::id.eq(id)))
+        .execute(&*conn)
+        .map_err(|err| IronError::new(err, status::InternalServerError))?;
 
-        delete(ssh_keys::table.filter(ssh_keys::dsl::id.eq(id)))
-            .execute(&*conn)
-            .map_err(|err| IronError::new(err, status::InternalServerError))?;
-
-        Ok(Response::with(
-            (status::NoContent, JsonResponse::json(json!({}))),
-        ))
-    }
+    Ok(Response::with(
+        (status::NoContent, JsonResponse::json(json!({}))),
+    ))
 }
 
 

@@ -4,7 +4,7 @@ extern crate syn;
 extern crate quote;
 
 use proc_macro::TokenStream;
-use syn::{Body, VariantData, MetaItem, NestedMetaItem, Lit};
+use syn::{Body, VariantData, MetaItem, NestedMetaItem, Lit, Ident};
 use quote::Tokens;
 
 #[proc_macro_derive(Route, attributes(get, post, put, delete, option))]
@@ -19,15 +19,19 @@ pub fn derive_iron_route(input: TokenStream) -> TokenStream {
 
             let mut method: Option<Tokens> = None;
             let mut path: Option<&str> = None;
+            let mut handler: Option<Ident> = None;
 
             for attr in &ast.attrs {
                 match attr.value {
                     MetaItem::List(ref ident, ref items) => {
                         for item in items {
                             match item {
-                                &NestedMetaItem::MetaItem(MetaItem::NameValue(ref ident, Lit::Str(ref value, _)))
-                                    if ident.as_ref() == "path" => {
-                                    path = Some(value.as_str());
+                                &NestedMetaItem::MetaItem(MetaItem::NameValue(ref ident, Lit::Str(ref value, _))) => {
+                                    match ident.as_ref() {
+                                        "path" => path = Some(value.as_str()),
+                                        "handler" => handler = Some(value.as_str().into()),
+                                        _ => panic!("unsupported attribute item"),
+                                    }
                                 }
                                 _ => panic!(""),
                             }
@@ -46,6 +50,7 @@ pub fn derive_iron_route(input: TokenStream) -> TokenStream {
             }
             let method = method.expect("failed to parse attribute");
             let path = path.expect("failed to parse attribute");
+            let handler = handler.expect("failed to parse attribute");
 
             quote!(
                 impl ::iron_router_ext::Route for #name {
@@ -57,6 +62,12 @@ pub fn derive_iron_route(input: TokenStream) -> TokenStream {
                     }
                     fn route_path() -> &'static str {
                         #path
+                    }
+                }
+                impl ::iron::Handler for #name {
+                    #[inline]
+                    fn handle(&self, req: &mut ::iron::Request) -> ::iron::IronResult<::iron::Response> {
+                        #handler (req)
                     }
                 }
             )

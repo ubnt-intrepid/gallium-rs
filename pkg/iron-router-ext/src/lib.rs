@@ -1,7 +1,7 @@
 extern crate iron;
 extern crate router;
 
-use iron::Chain;
+use iron::Handler;
 use iron::method::Method;
 use router::Router;
 
@@ -13,16 +13,11 @@ pub trait Route {
 }
 
 pub trait RegisterRoute {
-    fn register<R: Route + Into<Chain>>(&mut self, route: R) -> &mut Self;
+    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self;
 }
 
 impl RegisterRoute for Router {
-    fn register<R: Route + Into<Chain>>(&mut self, route: R) -> &mut Self {
-        self.route(
-            R::route_method(),
-            R::route_path(),
-            route.into(),
-            R::route_id(),
-        )
+    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self {
+        self.route(R::route_method(), R::route_path(), route, R::route_id())
     }
 }

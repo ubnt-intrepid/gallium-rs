@@ -4,12 +4,10 @@ mod projects;
 mod repository;
 mod users;
 
-use iron::prelude::*;
 use router::Router;
 use iron_router_ext::RegisterRoute;
 
-
-pub fn create_api_handler() -> Chain {
+pub fn create_api_handler() -> Router {
     let mut router = Router::new();
     router.register(projects::GetProjects);
     router.register(projects::GetProject);
@@ -23,5 +21,5 @@ pub fn create_api_handler() -> Chain {
     router.register(users::GetUsers);
     router.register(users::GetUser);
     router.register(users::CreateUser);
-    Chain::new(router)
+    router
 }

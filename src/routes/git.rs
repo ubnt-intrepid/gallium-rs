@@ -1,6 +1,5 @@
 use std::io::Read;
 use iron::prelude::*;
-use iron::Handler;
 use iron::status;
 use iron::headers::{Authorization, Basic, CacheControl, CacheDirective, Encoding, ContentEncoding, ContentType};
 use iron::mime::{Mime, TopLevel, SubLevel};
@@ -181,75 +180,51 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
 
 
 #[derive(Route)]
-#[get(path = "/:user/:project/info/refs")]
+#[get(path = "/:user/:project/info/refs", handler = "info_refs")]
 struct InfoRefs;
 
-impl Into<Chain> for InfoRefs {
-    fn into(self) -> Chain {
-        Chain::new(self)
-    }
-}
+fn info_refs(req: &mut Request) -> IronResult<Response> {
+    let service = get_service_name(req)?;
+    let (_user, project, repo) = open_repository(req)?;
+    check_scope(req, service, &project)?;
 
-impl Handler for InfoRefs {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let service = get_service_name(req)?;
-        let (_user, project, repo) = open_repository(req)?;
-        check_scope(req, service, &project)?;
+    let mut body = packet_write(&format!("# service=git-{}\n", service));
+    body.extend(b"0000");
+    let refs = repo.run_rpc_command(service, None).map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+    body.extend(refs);
 
-        let mut body = packet_write(&format!("# service=git-{}\n", service));
-        body.extend(b"0000");
-        let refs = repo.run_rpc_command(service, None).map_err(|err| {
-            IronError::new(err, status::InternalServerError)
-        })?;
-        body.extend(refs);
-
-        Ok(Response::with((
-            status::Ok,
-            Header(CacheControl(vec![CacheDirective::NoCache])),
-            Header(ContentType(Mime(
-                TopLevel::Application,
-                SubLevel::Ext(format!("x-git-{}-advertisement", service)),
-                Vec::new(),
-            ))),
-            body,
-        )))
-    }
+    Ok(Response::with((
+        status::Ok,
+        Header(CacheControl(vec![CacheDirective::NoCache])),
+        Header(ContentType(Mime(
+            TopLevel::Application,
+            SubLevel::Ext(format!("x-git-{}-advertisement", service)),
+            Vec::new(),
+        ))),
+        body,
+    )))
 }
 
 
 
 #[derive(Route)]
-#[post(path = "/:user/:project/git-receive-pack")]
+#[post(path = "/:user/:project/git-receive-pack", handler = "receive_pack")]
 struct ReceivePack;
 
-impl Into<Chain> for ReceivePack {
-    fn into(self) -> Chain {
-        Chain::new(self)
-    }
-}
-
-impl Handler for ReceivePack {
-    #[inline]
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        handle_service_rpc(req, "receive-pack")
-    }
+#[inline]
+fn receive_pack(req: &mut Request) -> IronResult<Response> {
+    handle_service_rpc(req, "receive-pack")
 }
 
 
 
 #[derive(Route)]
-#[post(path = "/:user/:project/git-upload-pack")]
+#[post(path = "/:user/:project/git-upload-pack", handler = "upload_pack")]
 struct UploadPack;
 
-impl Into<Chain> for UploadPack {
-    fn into(self) -> Chain {
-        Chain::new(self)
-    }
-}
-
-impl Handler for UploadPack {
-    #[inline]
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        handle_service_rpc(req, "upload-pack")
-    }
+#[inline]
+fn upload_pack(req: &mut Request) -> IronResult<Response> {
+    handle_service_rpc(req, "upload-pack")
 }
