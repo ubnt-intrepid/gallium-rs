@@ -1,5 +1,6 @@
 use std::io::Read;
 use iron::prelude::*;
+use iron::Handler;
 use iron::status;
 use iron::headers::{Authorization, Basic, CacheControl, CacheDirective, Encoding, ContentEncoding, ContentType};
 use iron::mime::{Mime, TopLevel, SubLevel};
@@ -13,28 +14,17 @@ use super::WWWAuthenticate;
 use db::DB;
 use config::Config;
 use models::repository;
+use iron_router_ext::RegisterRoute;
 
 
 pub(super) fn create_git_handler() -> Router {
     let mut router = Router::new();
-    router.get(repo_route("/info/refs"), handle_info_refs, "info_refs");
-    router.post(
-        repo_route("/git-receive-pack"),
-        |req: &mut Request| handle_service_rpc(req, "receive-pack"),
-        "receive-pack",
-    );
-    router.post(
-        repo_route("/git-upload-pack"),
-        |req: &mut Request| handle_service_rpc(req, "upload-pack"),
-        "upload-pack",
-    );
-
+    router.register(InfoRefs);
+    router.register(ReceivePack);
+    router.register(UploadPack);
     router
 }
 
-fn repo_route(path: &str) -> String {
-    format!("/:user/:project{}", path)
-}
 
 fn get_repo_identifier_from_req<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> {
     let route = req.extensions.get::<Router>().unwrap();
@@ -147,29 +137,6 @@ fn packet_write(data: &str) -> Vec<u8> {
     ret
 }
 
-fn handle_info_refs(req: &mut Request) -> IronResult<Response> {
-    let service = get_service_name(req)?;
-    let (_user, project, repo) = open_repository(req)?;
-    check_scope(req, service, &project)?;
-
-    let mut body = packet_write(&format!("# service=git-{}\n", service));
-    body.extend(b"0000");
-    let refs = repo.run_rpc_command(service, None).map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
-    body.extend(refs);
-
-    Ok(Response::with((
-        status::Ok,
-        Header(CacheControl(vec![CacheDirective::NoCache])),
-        Header(ContentType(Mime(
-            TopLevel::Application,
-            SubLevel::Ext(format!("x-git-{}-advertisement", service)),
-            Vec::new(),
-        ))),
-        body,
-    )))
-}
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
     let (_user, project, repo) = open_repository(req)?;
@@ -209,4 +176,80 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
         ))),
         body,
     )))
+}
+
+
+
+#[derive(Route)]
+#[get(path = "/:user/:project/info/refs")]
+struct InfoRefs;
+
+impl Into<Chain> for InfoRefs {
+    fn into(self) -> Chain {
+        Chain::new(self)
+    }
+}
+
+impl Handler for InfoRefs {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let service = get_service_name(req)?;
+        let (_user, project, repo) = open_repository(req)?;
+        check_scope(req, service, &project)?;
+
+        let mut body = packet_write(&format!("# service=git-{}\n", service));
+        body.extend(b"0000");
+        let refs = repo.run_rpc_command(service, None).map_err(|err| {
+            IronError::new(err, status::InternalServerError)
+        })?;
+        body.extend(refs);
+
+        Ok(Response::with((
+            status::Ok,
+            Header(CacheControl(vec![CacheDirective::NoCache])),
+            Header(ContentType(Mime(
+                TopLevel::Application,
+                SubLevel::Ext(format!("x-git-{}-advertisement", service)),
+                Vec::new(),
+            ))),
+            body,
+        )))
+    }
+}
+
+
+
+#[derive(Route)]
+#[post(path = "/:user/:project/git-receive-pack")]
+struct ReceivePack;
+
+impl Into<Chain> for ReceivePack {
+    fn into(self) -> Chain {
+        Chain::new(self)
+    }
+}
+
+impl Handler for ReceivePack {
+    #[inline]
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        handle_service_rpc(req, "receive-pack")
+    }
+}
+
+
+
+#[derive(Route)]
+#[post(path = "/:user/:project/git-upload-pack")]
+struct UploadPack;
+
+impl Into<Chain> for UploadPack {
+    fn into(self) -> Chain {
+        Chain::new(self)
+    }
+}
+
+impl Handler for UploadPack {
+    #[inline]
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        handle_service_rpc(req, "upload-pack")
+    }
 }
