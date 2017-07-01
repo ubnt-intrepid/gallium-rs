@@ -22,9 +22,7 @@ pub(super) fn create_routes() -> Chain {
     router.register(AddKey);
     router.register(DeleteKey);
 
-    let mut chain = Chain::new(router);
-    chain.link_after(JsonResponseMiddleware::new());
-    chain
+    Chain::new(router)
 }
 
 
@@ -40,6 +38,15 @@ impl Route for GetKeys {
     }
     fn route_method() -> Method {
         Method::Get
+    }
+}
+
+impl Into<Chain> for GetKeys {
+    fn into(self) -> Chain {
+        let mut chain = Chain::new(self);
+        chain.link_after(JsonResponseMiddleware::new());
+        chain
+
     }
 }
 
@@ -75,6 +82,14 @@ impl Route for GetKey {
     }
 }
 
+impl Into<Chain> for GetKey {
+    fn into(self) -> Chain {
+        let mut chain = Chain::new(self);
+        chain.link_after(JsonResponseMiddleware::new());
+        chain
+    }
+}
+
 impl Handler for GetKey {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         let router = req.extensions.get::<Router>().unwrap();
@@ -107,6 +122,14 @@ impl Route for AddKey {
     }
     fn route_method() -> Method {
         Method::Post
+    }
+}
+
+impl Into<Chain> for AddKey {
+    fn into(self) -> Chain {
+        let mut chain = Chain::new(self);
+        chain.link_after(JsonResponseMiddleware::new());
+        chain
     }
 }
 
@@ -146,6 +169,14 @@ impl Route for DeleteKey {
     }
     fn route_method() -> Method {
         Method::Delete
+    }
+}
+
+impl Into<Chain> for DeleteKey {
+    fn into(self) -> Chain {
+        let mut chain = Chain::new(self);
+        chain.link_after(JsonResponseMiddleware::new());
+        chain
     }
 }
 

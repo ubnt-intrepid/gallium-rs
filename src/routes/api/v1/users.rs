@@ -17,10 +17,7 @@ pub(super) fn create_routes() -> Chain {
     router.register(GetUsers);
     router.register(GetUser);
     router.register(CreateUser);
-
-    let mut chain = Chain::new(router);
-    chain.link_after(JsonResponseMiddleware::new());
-    chain
+    Chain::new(router)
 }
 
 
@@ -35,6 +32,14 @@ impl Route for GetUsers {
     }
     fn route_id() -> &'static str {
         "get_users"
+    }
+}
+
+impl Into<Chain> for GetUsers {
+    fn into(self) -> Chain {
+        let mut chain = Chain::new(self);
+        chain.link_after(JsonResponseMiddleware::new());
+        chain
     }
 }
 
@@ -67,6 +72,14 @@ impl Route for GetUser {
     }
 }
 
+impl Into<Chain> for GetUser {
+    fn into(self) -> Chain {
+        let mut chain = Chain::new(self);
+        chain.link_after(JsonResponseMiddleware::new());
+        chain
+    }
+}
+
 impl Handler for GetUser {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         let router = req.extensions.get::<Router>().unwrap();
@@ -95,6 +108,14 @@ impl Route for CreateUser {
     }
     fn route_id() -> &'static str {
         "create_user"
+    }
+}
+
+impl Into<Chain> for CreateUser {
+    fn into(self) -> Chain {
+        let mut chain = Chain::new(self);
+        chain.link_after(JsonResponseMiddleware::new());
+        chain
     }
 }
 

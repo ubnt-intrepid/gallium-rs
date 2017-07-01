@@ -5,7 +5,6 @@ mod repository;
 mod users;
 
 use iron::prelude::*;
-use iron::Handler;
 use iron::method::Method;
 use mount::Mount;
 use router::Router;
@@ -28,11 +27,16 @@ trait Route {
 }
 
 trait RegisterRoute {
-    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self;
+    fn register<R: Route + Into<Chain>>(&mut self, route: R) -> &mut Self;
 }
 
 impl RegisterRoute for Router {
-    fn register<R: Route + Handler>(&mut self, route: R) -> &mut Self {
-        self.route(R::route_method(), R::route_path(), route, R::route_id())
+    fn register<R: Route + Into<Chain>>(&mut self, route: R) -> &mut Self {
+        self.route(
+            R::route_method(),
+            R::route_path(),
+            route.into(),
+            R::route_id(),
+        )
     }
 }
