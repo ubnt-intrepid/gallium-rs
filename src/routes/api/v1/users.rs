@@ -7,6 +7,7 @@ use router::Router;
 use error::AppError;
 use db::DB;
 use models::User;
+use super::error;
 
 
 #[derive(Route)]
@@ -16,7 +17,7 @@ pub(super) struct GetUsers;
 fn get_users(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let users: Vec<_> = User::load_users(db)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .map_err(error::server_error)?
         .into_iter()
         .map(EncodableUser::from)
         .collect();
@@ -36,7 +37,7 @@ fn get_user(req: &mut Request) -> IronResult<Response> {
 
     let db = req.extensions.get::<DB>().unwrap();
     let user: EncodableUser = User::find_by_id(db, id)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .map_err(error::server_error)?
         .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?
         .into();
 
@@ -53,15 +54,13 @@ fn create_user(req: &mut Request) -> IronResult<Response> {
     #[derive(Clone, Deserialize)]
     struct Params {
         name: String,
-        email_address: String,
         password: String,
         screen_name: Option<String>,
-        is_admin: Option<bool>,
     }
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| IronError::new(AppError::from(""), status::BadRequest))?;
+        .ok_or_else(|| error::bad_request(""))?;
 
     let db = req.extensions.get::<DB>().unwrap();
     let user = User::create(
@@ -69,7 +68,7 @@ fn create_user(req: &mut Request) -> IronResult<Response> {
         &params.name,
         &params.password,
         params.screen_name.as_ref().map(|s| s.as_str()),
-    ).map_err(|err| IronError::new(err, status::InternalServerError))
+    ).map_err(error::server_error)
         .map(EncodableUser::from)?;
 
     Ok(Response::with((status::Created, JsonResponse::json(user))))

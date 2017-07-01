@@ -7,6 +7,7 @@ use error::AppError;
 use db::DB;
 use config::Config;
 use models::repository;
+use super::error;
 
 
 #[derive(Route)]
@@ -21,12 +22,10 @@ fn show_tree(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
     let (_, _, repo) = repository::open_repository_from_id(db, config, id)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .map_err(error::server_error)?
         .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?;
 
-    let tree = repo.get_head_tree_objects().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let tree = repo.get_head_tree_objects().map_err(error::server_error)?;
 
     Ok(Response::with((status::Ok, JsonResponse::json(tree))))
 }

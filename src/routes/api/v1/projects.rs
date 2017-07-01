@@ -6,13 +6,13 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
 
-use error::AppError;
 use models::Project;
 use models::repository;
 use schema::projects;
 
 use db::DB;
 use config::Config;
+use super::error;
 
 
 
@@ -22,13 +22,11 @@ pub(super) struct GetProjects;
 
 fn get_projects(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let conn = db.get_db_conn().map_err(error::server_error)?;
 
     let repos: Vec<EncodableProject> = projects::table
         .load::<Project>(&*conn)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?
+        .map_err(error::server_error)?
         .into_iter()
         .map(Into::into)
         .collect();
@@ -47,14 +45,12 @@ fn get_project(req: &mut Request) -> IronResult<Response> {
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
     let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let conn = db.get_db_conn().map_err(error::server_error)?;
 
     let repo: EncodableProject = projects::table
         .filter(projects::dsl::id.eq(id))
         .get_result::<Project>(&*conn)
-        .map_err(|err| IronError::new(err, status::NotFound))?
+        .map_err(error::server_error)?
         .into();
 
     Ok(Response::with((status::Ok, JsonResponse::json(repo))))
@@ -75,21 +71,19 @@ fn create_project(req: &mut Request) -> IronResult<Response> {
     let params = req.get::<Struct<Params>>()
         .ok()
         .and_then(|s| s)
-        .ok_or_else(|| {
-            IronError::new(AppError::from("Invalid Request"), status::BadRequest)
-        })?;
+        .ok_or_else(|| error::bad_request(""))?;
 
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
 
-    let project = Project::create(
+    let project: EncodableProject = Project::create(
         db,
         config,
         &params.user,
         &params.name,
         params.description.as_ref().map(|s| s.as_str()),
-    ).map(EncodableProject::from)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+    ).map_err(error::server_error)?
+        .into();
 
     Ok(Response::with(
         (status::Created, JsonResponse::json(project)),
@@ -108,12 +102,10 @@ fn delete_project(req: &mut Request) -> IronResult<Response> {
 
     let db = req.extensions.get::<DB>().unwrap();
     let config = req.extensions.get::<Config>().unwrap();
-    let conn = db.get_db_conn().map_err(|err| {
-        IronError::new(err, status::InternalServerError)
-    })?;
+    let conn = db.get_db_conn().map_err(error::server_error)?;
 
     let result = repository::open_repository_from_id(db, config, id)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+        .map_err(error::server_error)?;
     let (_, _, repo) = match result {
         Some(r) => r,
         None => return Ok(Response::with(status::Ok)),
@@ -125,7 +117,7 @@ fn delete_project(req: &mut Request) -> IronResult<Response> {
 
     delete(projects::table.filter(projects::dsl::id.eq(id)))
         .execute(&*conn)
-        .map_err(|err| IronError::new(err, status::InternalServerError))?;
+        .map_err(error::server_error)?;
 
     Ok(Response::with(
         (status::NoContent, JsonResponse::json(json!({}))),
