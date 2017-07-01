@@ -9,19 +9,10 @@ use iron::method::Method;
 use error::AppError;
 use db::DB;
 use models::User;
-use super::{Route, RegisterRoute};
+use super::Route;
 
 
-pub(super) fn create_routes() -> Chain {
-    let mut router = Router::new();
-    router.register(GetUsers);
-    router.register(GetUser);
-    router.register(CreateUser);
-    Chain::new(router)
-}
-
-
-struct GetUsers;
+pub(super) struct GetUsers;
 
 impl Route for GetUsers {
     fn route_path() -> &'static str {
@@ -58,7 +49,7 @@ impl Handler for GetUsers {
 
 
 
-struct GetUser;
+pub(super) struct GetUser;
 
 impl Route for GetUser {
     fn route_path() -> &'static str {
@@ -97,7 +88,7 @@ impl Handler for GetUser {
 
 
 
-struct CreateUser;
+pub(super) struct CreateUser;
 
 impl Route for CreateUser {
     fn route_path() -> &'static str {

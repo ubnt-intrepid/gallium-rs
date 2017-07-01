@@ -12,22 +12,10 @@ use error::AppError;
 use models::{SshKey, NewSshKey};
 use schema::ssh_keys;
 use db::DB;
-use super::{Route, RegisterRoute};
+use super::Route;
 
 
-pub(super) fn create_routes() -> Chain {
-    let mut router = Router::new();
-    router.register(GetKeys);
-    router.register(GetKey);
-    router.register(AddKey);
-    router.register(DeleteKey);
-
-    Chain::new(router)
-}
-
-
-
-struct GetKeys;
+pub(super) struct GetKeys;
 
 impl Route for GetKeys {
     fn route_id() -> &'static str {
@@ -68,7 +56,8 @@ impl Handler for GetKeys {
 }
 
 
-struct GetKey;
+
+pub(super) struct GetKey;
 
 impl Route for GetKey {
     fn route_id() -> &'static str {
@@ -111,7 +100,7 @@ impl Handler for GetKey {
 
 
 
-struct AddKey;
+pub(super) struct AddKey;
 
 impl Route for AddKey {
     fn route_id() -> &'static str {
@@ -158,7 +147,7 @@ impl Handler for AddKey {
 
 
 
-struct DeleteKey;
+pub(super) struct DeleteKey;
 
 impl Route for DeleteKey {
     fn route_id() -> &'static str {

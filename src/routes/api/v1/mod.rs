@@ -6,18 +6,24 @@ mod users;
 
 use iron::prelude::*;
 use iron::method::Method;
-use mount::Mount;
 use router::Router;
 
 pub fn create_api_handler() -> Chain {
-    let mut mount = Mount::new();
-    mount.mount("/ssh_keys", ssh_keys::create_routes());
-    mount.mount("/projects", projects::create_routes());
-    mount.mount("/users", users::create_routes());
-
-    Chain::new(mount)
+    let mut router = Router::new();
+    router.register(projects::GetProjects);
+    router.register(projects::GetProject);
+    router.register(projects::CreateProject);
+    router.register(projects::DeleteProject);
+    router.register(repository::ShowTree);
+    router.register(ssh_keys::GetKeys);
+    router.register(ssh_keys::GetKey);
+    router.register(ssh_keys::AddKey);
+    router.register(ssh_keys::DeleteKey);
+    router.register(users::GetUsers);
+    router.register(users::GetUser);
+    router.register(users::CreateUser);
+    Chain::new(router)
 }
-
 
 
 trait Route {
