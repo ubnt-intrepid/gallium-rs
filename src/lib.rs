@@ -8,7 +8,6 @@ extern crate iron;
 extern crate mount;
 extern crate bodyparser;
 extern crate router;
-extern crate urlencoded;
 extern crate flate2;
 extern crate serde;
 #[macro_use]

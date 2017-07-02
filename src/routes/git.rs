@@ -5,13 +5,14 @@ use iron::headers::{Authorization, Basic, CacheControl, CacheDirective, Encoding
 use iron::mime::{Mime, TopLevel, SubLevel};
 use iron::modifiers::Header;
 use router::Router;
-use urlencoded::UrlEncodedQuery;
 use flate2::read::GzDecoder;
 use error::AppError;
 use models::{User, Project, Repository};
 use super::WWWAuthenticate;
 use db::DB;
 use iron_router_ext::RegisterRoute;
+use url::Url;
+use std::borrow::Borrow;
 
 
 pub(super) fn create_git_router() -> Router {
@@ -98,12 +99,17 @@ fn check_scope(req: &mut Request, service: &str, project: &Project) -> IronResul
     Ok(())
 }
 
+
 fn get_service_name(req: &mut Request) -> IronResult<&'static str> {
-    let s = req.get_ref::<UrlEncodedQuery>()
-        .ok()
-        .and_then(|q| q.get("service").and_then(|s| s.into_iter().next()))
-        .map(|s| s.as_str());
-    match s {
+    let url: Url = req.url.clone().into();
+    let mut service = None;
+    for (key, val) in url.query_pairs() {
+        match key.borrow() {
+            "service" => service = Some(val),
+            _ => (),
+        }
+    }
+    match service.as_ref().map(|s| s.borrow()) {
         Some("git-receive-pack") => Ok("receive-pack"),
         Some("git-upload-pack") => Ok("upload-pack"),
         Some(ref s) => {
