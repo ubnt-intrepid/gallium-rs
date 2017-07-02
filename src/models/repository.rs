@@ -7,7 +7,6 @@ use git2;
 use serde_json::Value as JsonValue;
 use users::get_user_by_name;
 use error::{AppResult, AppError};
-use base64;
 
 
 pub struct Repository {
@@ -93,20 +92,7 @@ impl Repository {
         Ok(objects)
     }
 
-    pub fn get_blob(&self, sha: &str) -> AppResult<Option<JsonValue>> {
-        let blob = self.get_blob_raw(sha)?.map(|content| {
-            let content = base64::encode(&content);
-            json!({
-                "sha": sha,
-                "encoding": "base64",
-                "content": content,
-                "size": content.len(),
-            })
-        });
-        Ok(blob)
-    }
-
-    pub fn get_blob_raw(&self, sha: &str) -> AppResult<Option<String>> {
+    pub fn get_blob_content(&self, sha: &str) -> AppResult<Option<String>> {
         let oid = git2::Oid::from_str(sha)?;
         let blob = match self.inner.find_blob(oid) {
             Ok(blob) => blob,

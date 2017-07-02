@@ -9,7 +9,6 @@ use mount::Mount;
 use error::AppResult;
 use middlewares::app::AppMiddleware;
 use config::Config;
-use iron_json_response::JsonResponseMiddleware;
 
 
 header! {
@@ -25,6 +24,5 @@ pub fn create_handler(config: Config) -> AppResult<Chain> {
 
     let mut chain = Chain::new(mount);
     chain.link_before(app);
-    chain.link_after(JsonResponseMiddleware::new());
     Ok(chain)
 }

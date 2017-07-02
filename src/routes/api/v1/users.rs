@@ -1,13 +1,12 @@
 use bodyparser::Struct;
 use iron::prelude::*;
 use iron::status;
-use iron_json_response::JsonResponse;
 use router::Router;
 
 use error::AppError;
 use db::DB;
 use models::User;
-use super::error;
+use super::{response, error};
 
 
 #[derive(Route)]
@@ -22,7 +21,7 @@ fn get_users(req: &mut Request) -> IronResult<Response> {
         .map(EncodableUser::from)
         .collect();
 
-    Ok(Response::with((status::Ok, JsonResponse::json(users))))
+    response::ok(users)
 }
 
 
@@ -41,7 +40,7 @@ fn get_user(req: &mut Request) -> IronResult<Response> {
         .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?
         .into();
 
-    Ok(Response::with((status::Ok, JsonResponse::json(user))))
+    response::ok(user)
 }
 
 
@@ -71,7 +70,7 @@ fn create_user(req: &mut Request) -> IronResult<Response> {
     ).map_err(error::server_error)
         .map(EncodableUser::from)?;
 
-    Ok(Response::with((status::Created, JsonResponse::json(user))))
+    response::created(user)
 }
 
 

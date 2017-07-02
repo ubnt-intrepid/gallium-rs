@@ -1,15 +1,26 @@
 use iron::prelude::*;
 use iron::status;
+use std::borrow::Borrow;
 use iron::headers::ContentType;
 use iron::modifiers::Header;
-use iron_json_response::JsonResponse;
 use router::Router;
-use error::AppError;
+use base64;
 use url::Url;
-use std::borrow::Borrow;
+
 use db::DB;
-use super::error;
-use models::Project;
+use models::{Project, Repository};
+use super::{response, error};
+
+
+fn open_repository_from_id(req: &Request, id: i32) -> IronResult<Repository> {
+    let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let project = Project::find_by_id(&db, id)
+        .map_err(error::server_error)?
+        .ok_or_else(|| error::not_found(""))?;
+    project.open_repository(&*conn).map_err(error::server_error)
+}
+
 
 #[derive(Route)]
 #[get(path = "/projects/:id/repository/tree", handler = "show_tree")]
@@ -29,21 +40,15 @@ fn show_tree(req: &mut Request) -> IronResult<Response> {
             _ => (),
         }
     }
+    let refname = refname.as_ref().map(|s| s.as_str()).unwrap_or("HEAD");
+    let path = path.as_ref().map(|s| s.as_str());
+    let recursive = recursive.unwrap_or(false);
 
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
-    let project = Project::find_by_id(&db, id)
-        .map_err(error::server_error)?
-        .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?;
-    let repo = project.open_repository(&*conn).map_err(error::server_error)?;
-
-    let tree = repo.list_tree(
-        refname.as_ref().map(|s| s.as_str()).unwrap_or("HEAD"),
-        path.as_ref().map(|s| s.as_str()),
-        recursive.unwrap_or(false),
-    ).map_err(error::server_error)?;
-
-    Ok(Response::with((status::Ok, JsonResponse::json(tree))))
+    let repo = open_repository_from_id(req, id)?;
+    let tree = repo.list_tree(refname, path, recursive).map_err(
+        error::server_error,
+    )?;
+    response::ok(tree)
 }
 
 
@@ -56,24 +61,18 @@ fn get_blob(req: &mut Request) -> IronResult<Response> {
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
     let sha = router.find("sha").unwrap();
 
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
-    let project = Project::find_by_id(&db, id)
+    let repo = open_repository_from_id(req, id)?;
+    let content = repo.get_blob_content(sha)
         .map_err(error::server_error)?
-        .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?;
-    let repo = project.open_repository(&*conn).map_err(error::server_error)?;
-    let blob = repo.get_blob(sha)
-        .map_err(error::server_error)?
-        .ok_or_else(|| {
-            IronError::new(AppError::from("repository"), (
-                status::NotFound,
-                JsonResponse::json(json!({
-                    "error": "not_found",
-                })),
-            ))
-        })?;
+        .map(|content| base64::encode(&content))
+        .ok_or_else(|| error::not_found(""))?;
 
-    Ok(Response::with((status::Ok, JsonResponse::json(blob))))
+    response::ok(json!({
+        "sha": sha,
+        "encoding": "base64",
+        "content": content,
+        "size": content.len(),
+    }))
 }
 
 
@@ -86,24 +85,11 @@ fn get_raw_blob(req: &mut Request) -> IronResult<Response> {
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
     let sha = router.find("sha").unwrap();
 
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
-    let project = Project::find_by_id(&db, id)
+    let repo = open_repository_from_id(req, id)?;
+    let content = repo.get_blob_content(sha)
         .map_err(error::server_error)?
-        .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?;
-    let repo = project.open_repository(&*conn).map_err(error::server_error)?;
-    let blob = repo.get_blob_raw(sha)
-        .map_err(error::server_error)?
-        .ok_or_else(|| {
-            IronError::new(AppError::from("repository"), (
-                status::NotFound,
-                JsonResponse::json(json!({
-                    "error": "not_found",
-                })),
-            ))
-        })?;
-
+        .ok_or_else(|| error::not_found(""))?;
     Ok(Response::with(
-        (status::Ok, Header(ContentType::plaintext()), blob),
+        (status::Ok, Header(ContentType::plaintext()), content),
     ))
 }

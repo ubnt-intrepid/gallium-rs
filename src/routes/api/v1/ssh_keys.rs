@@ -1,15 +1,13 @@
 use diesel::{insert, delete};
 use diesel::prelude::*;
 use iron::prelude::*;
-use iron::status;
 use bodyparser::Struct;
 use router::Router;
-use iron_json_response::JsonResponse;
 
 use models::{SshKey, NewSshKey};
 use schema::ssh_keys;
 use db::DB;
-use super::error;
+use super::{response, error};
 
 
 #[derive(Route)]
@@ -26,7 +24,7 @@ fn get_ssh_keys(req: &mut Request) -> IronResult<Response> {
         .map(Into::into)
         .collect();
 
-    Ok(Response::with((status::Ok, JsonResponse::json(&keys))))
+    response::ok(keys)
 }
 
 
@@ -47,7 +45,7 @@ fn get_ssh_key(req: &mut Request) -> IronResult<Response> {
         .map_err(error::server_error)?
         .into();
 
-    Ok(Response::with((status::Ok, JsonResponse::json(&key))))
+    response::ok(key)
 }
 
 
@@ -64,15 +62,13 @@ fn add_ssh_key(req: &mut Request) -> IronResult<Response> {
 
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
-    let inserted_key: EncodablePublicKey = insert(&new_key)
+    let key: EncodablePublicKey = insert(&new_key)
         .into(ssh_keys::table)
         .get_result::<SshKey>(&*conn)
         .map(Into::into)
         .map_err(error::server_error)?;
 
-    Ok(Response::with(
-        (status::Created, JsonResponse::json(&inserted_key)),
-    ))
+    response::created(key)
 }
 
 
@@ -92,9 +88,7 @@ fn delete_ssh_key(req: &mut Request) -> IronResult<Response> {
         .execute(&*conn)
         .map_err(error::server_error)?;
 
-    Ok(Response::with(
-        (status::NoContent, JsonResponse::json(json!({}))),
-    ))
+    response::no_content()
 }
 
 

@@ -4,12 +4,11 @@ use iron::prelude::*;
 use iron::status;
 use bodyparser::Struct;
 use router::Router;
-use iron_json_response::JsonResponse;
 
 use models::{Project, NewProject};
 
 use db::DB;
-use super::error;
+use super::{response, error};
 
 
 
@@ -29,7 +28,7 @@ fn get_projects(req: &mut Request) -> IronResult<Response> {
         .map(Into::into)
         .collect();
 
-    Ok(Response::with((status::Ok, JsonResponse::json(repos))))
+    response::ok(repos)
 }
 
 
@@ -52,7 +51,7 @@ fn get_project(req: &mut Request) -> IronResult<Response> {
         .map_err(error::server_error)?
         .into();
 
-    Ok(Response::with((status::Ok, JsonResponse::json(repo))))
+    response::ok(repo)
 }
 
 
@@ -69,10 +68,7 @@ fn create_project(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let project = new_project.insert(db).map_err(error::server_error)?;
 
-    Ok(Response::with((
-        status::Created,
-        JsonResponse::json(EncodableProject::from(project)),
-    )))
+    response::created(EncodableProject::from(project))
 }
 
 
@@ -104,9 +100,7 @@ fn delete_project(req: &mut Request) -> IronResult<Response> {
     )).execute(&*conn)
         .map_err(error::server_error)?;
 
-    Ok(Response::with(
-        (status::NoContent, JsonResponse::json(json!({}))),
-    ))
+    response::no_content()
 }
 
 

@@ -15,7 +15,6 @@ extern crate serde;
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
-extern crate iron_json_response;
 extern crate bcrypt;
 extern crate r2d2;
 extern crate r2d2_diesel;
