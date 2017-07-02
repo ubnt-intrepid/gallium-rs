@@ -62,20 +62,30 @@ impl Repository {
         self.inner.path()
     }
 
-    pub fn list_tree(&self, refname: &str, is_recursive: bool) -> AppResult<Vec<JsonValue>> {
+    pub fn list_tree(&self, refname: &str, path: Option<&str>, is_recursive: bool) -> AppResult<Vec<JsonValue>> {
+        let path = path.map(|s| PathBuf::from(s));
+
         let reference = self.inner.find_reference(refname)?.resolve()?;
         let target = reference.target().ok_or_else(|| {
             AppError::from("failed to get target object")
         })?;
         let commit = self.inner.find_commit(target)?;
-        let tree = commit.tree()?;
+
+        let mut tree = commit.tree()?;
+        if let Some(ref path) = path {
+            tree = tree.get_path(path)?
+                .to_object(&self.inner)
+                .ok()
+                .and_then(|o| o.into_tree().ok())
+                .unwrap();
+        }
 
         let mut objects = Vec::new();
         walk_tree(
             &self.inner,
             &tree,
             &mut objects,
-            PathBuf::default(),
+            path.unwrap_or_default(),
             is_recursive,
         )?;
 
