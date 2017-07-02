@@ -6,7 +6,7 @@ use bodyparser::Struct;
 use router::Router;
 use iron_json_response::JsonResponse;
 
-use models::Project;
+use models::{Project, NewProject};
 
 use db::DB;
 use super::error;
@@ -61,25 +61,14 @@ fn get_project(req: &mut Request) -> IronResult<Response> {
 pub(super) struct CreateProject;
 
 fn create_project(req: &mut Request) -> IronResult<Response> {
-    #[derive(Clone, Deserialize)]
-    struct Params {
-        user: String,
-        name: String,
-        description: Option<String>,
-    }
-    let params = req.get::<Struct<Params>>()
+    let new_project = req.get::<Struct<NewProject>>()
         .ok()
         .and_then(|s| s)
         .ok_or_else(|| error::bad_request(""))?;
 
     let db = req.extensions.get::<DB>().unwrap();
-
-    let project: EncodableProject = Project::create(
-        db,
-        &params.user,
-        &params.name,
-        params.description.as_ref().map(|s| s.as_str()),
-    ).map_err(error::server_error)?
+    let project: EncodableProject = Project::create(db, new_project)
+        .map_err(error::server_error)?
         .into();
 
     Ok(Response::with(

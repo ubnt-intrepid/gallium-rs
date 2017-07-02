@@ -6,7 +6,6 @@ use db::DB;
 use error::AppResult;
 
 use diesel::prelude::*;
-use diesel::insert;
 use std::path::Path;
 
 
@@ -43,33 +42,33 @@ pub struct Project {
     pub description: Option<String>,
 }
 
-#[derive(Insertable)]
-#[table_name = "projects"]
-pub struct NewProject<'a> {
-    pub user_id: i32,
-    pub name: &'a str,
-    pub description: Option<&'a str>,
+#[derive(Clone, Deserialize)]
+pub struct NewProject {
+    pub user: String,
+    pub name: String,
+    pub description: Option<String>,
 }
 
 impl Project {
-    pub fn create(db: &DB, user: &str, name: &str, description: Option<&str>) -> AppResult<Self> {
+    pub fn create(db: &DB, new_project: NewProject) -> AppResult<Self> {
+        use diesel::types::{Int4, Timestamp, Text, Nullable};
+        use diesel::expression::dsl::sql;
+
         let conn = db.get_db_conn()?;
 
-        let user_id: i32 = users::table
-            .filter(users::dsl::name.eq(&user))
-            .select(users::dsl::id)
-            .get_result(&*conn)?;
+        let query =
+            format!(
+            "INSERT INTO projects (user_id, name, description)
+             SELECT id, {}, {} FROM users
+             WHERE users.name = {} LIMIT 1
+             RETURNING *",
+            escape_str(&new_project.name),
+            new_project.description.map(|s| escape_str(&s)).unwrap_or("NULL".to_owned()),
+            escape_str(&new_project.user),
+        );
+        let query = sql::<(Int4, Timestamp, Int4, Text, Nullable<Text>)>(&query);
 
-        let new_project = NewProject {
-            name,
-            user_id,
-            description,
-        };
-
-        insert(&new_project)
-            .into(projects::table)
-            .get_result::<Project>(&*conn)
-            .map_err(Into::into)
+        query.get_result::<Project>(&*conn).map_err(Into::into)
     }
 
     pub fn find_by_id<I: Into<ProjectID>>(db: &DB, id: I) -> AppResult<Option<Self>> {
@@ -103,4 +102,9 @@ impl Project {
         let repo_path = Path::new(&format!("{}/{}", user.name, self.name)).to_path_buf();
         Repository::open(repo_path)
     }
+}
+
+
+fn escape_str(s: &str) -> String {
+    format!("'{}'", s.replace("'", "''"))
 }
