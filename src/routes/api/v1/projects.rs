@@ -7,8 +7,7 @@ use router::Router;
 use iron_json_response::JsonResponse;
 
 use models::Project;
-use models::repository;
-use schema::projects;
+use models::projects;
 
 use db::DB;
 use config::Config;
@@ -24,6 +23,7 @@ fn get_projects(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
 
+    use schema::projects;
     let repos: Vec<EncodableProject> = projects::table
         .load::<Project>(&*conn)
         .map_err(error::server_error)?
@@ -47,6 +47,7 @@ fn get_project(req: &mut Request) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
 
+    use schema::projects;
     let repo: EncodableProject = projects::table
         .filter(projects::dsl::id.eq(id))
         .get_result::<Project>(&*conn)
@@ -102,8 +103,9 @@ fn delete_project(req: &mut Request) -> IronResult<Response> {
     let config = req.extensions.get::<Config>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
 
-    let result = repository::open_repository_from_id(db, config, id)
-        .map_err(error::server_error)?;
+    let result = projects::open_repository_from_id(db, config, id).map_err(
+        error::server_error,
+    )?;
     let (_, _, repo) = match result {
         Some(r) => r,
         None => return Ok(Response::with(status::Ok)),
@@ -113,8 +115,9 @@ fn delete_project(req: &mut Request) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    delete(projects::table.filter(projects::dsl::id.eq(id)))
-        .execute(&*conn)
+    delete(::schema::projects::table.filter(
+        ::schema::projects::dsl::id.eq(id),
+    )).execute(&*conn)
         .map_err(error::server_error)?;
 
     Ok(Response::with(

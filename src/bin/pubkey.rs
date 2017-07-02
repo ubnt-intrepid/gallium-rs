@@ -13,7 +13,7 @@ use gallium::models::{Project, SshKey};
 use gallium::schema::ssh_keys;
 use gallium::config::Config;
 use gallium::db::DB;
-use gallium::models::repository::open_repository;
+use gallium::models::projects::open_repository;
 
 
 fn build_cli<'a, 'b: 'a>() -> clap::App<'a, 'b> {
