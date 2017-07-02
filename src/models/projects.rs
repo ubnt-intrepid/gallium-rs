@@ -3,12 +3,34 @@ use schema::{users, projects};
 use super::users::User;
 use super::repository::Repository;
 use db::DB;
-use config::Config;
-use error::{AppResult, AppError};
+use error::AppResult;
 
 use diesel::prelude::*;
 use diesel::insert;
 use std::path::Path;
+
+
+#[derive(Debug)]
+pub enum ProjectID {
+    Number(i32),
+    Path(String, String),
+}
+
+impl From<i32> for ProjectID {
+    fn from(id: i32) -> Self {
+        ProjectID::Number(id)
+    }
+}
+
+impl<A, B> From<(A, B)> for ProjectID
+where
+    A: AsRef<str>,
+    B: AsRef<str>,
+{
+    fn from(path: (A, B)) -> Self {
+        ProjectID::Path(path.0.as_ref().to_owned(), path.1.as_ref().to_owned())
+    }
+}
 
 
 #[derive(Debug, Queryable, Identifiable, Associations, AsChangeset)]
@@ -31,11 +53,6 @@ pub struct NewProject<'a> {
 
 impl Project {
     pub fn create(db: &DB, user: &str, name: &str, description: Option<&str>) -> AppResult<Self> {
-        if open_repository(db, user, name).is_ok() {
-            return Err(AppError::from("The repository has already created."));
-        }
-        Repository::create(format!("{}/{}", user, name))?;
-
         let conn = db.get_db_conn()?;
 
         let user_id: i32 = users::table
@@ -54,45 +71,36 @@ impl Project {
             .get_result::<Project>(&*conn)
             .map_err(Into::into)
     }
-}
 
-pub fn open_repository(db: &DB, user: &str, project: &str) -> AppResult<Option<(User, Project, Repository)>> {
-    let conn = db.get_db_conn()?;
-    let result = users::table
-        .inner_join(projects::table)
-        .filter(users::dsl::name.eq(&user))
-        .filter(projects::dsl::name.eq(project))
-        .get_result::<(User, Project)>(&*conn)
-        .optional()?;
-    match result {
-        Some((user, project)) => {
-            let repo_path = Path::new(&format!("{}/{}", user.name, project.name)).to_path_buf();
-            if !repo_path.is_dir() {
-                return Err("".into());
+    pub fn find_by_id<I: Into<ProjectID>>(db: &DB, id: I) -> AppResult<Option<Self>> {
+        let conn = db.get_db_conn()?;
+        match id.into() {
+            ProjectID::Number(id) => {
+                projects::table
+                    .filter(projects::dsl::id.eq(id))
+                    .get_result::<Project>(&*conn)
+                    .optional()
+                    .map_err(Into::into)
             }
-            let repo = Repository::open(repo_path)?;
-            Ok(Some((user, project, repo)))
+            ProjectID::Path(ref user, ref project) => {
+                users::table
+                    .inner_join(projects::table)
+                    .filter(users::dsl::name.eq(user.as_str()))
+                    .filter(projects::dsl::name.eq(project.as_str()))
+                    .get_result::<(User, Project)>(&*conn)
+                    .map(|(_, project)| project)
+                    .optional()
+                    .map_err(Into::into)
+            }
         }
-        None => Ok(None),
     }
-}
 
-pub fn open_repository_from_id(db: &DB, config: &Config, id: i32) -> AppResult<Option<(User, Project, Repository)>> {
-    let conn = db.get_db_conn()?;
-    let result = users::table
-        .inner_join(projects::table)
-        .filter(projects::dsl::id.eq(id))
-        .get_result::<(User, Project)>(&*conn)
-        .optional()?;
-    match result {
-        Some((user, project)) => {
-            let repo_path = config.repository_path(&user.name, &project.name);
-            if !repo_path.is_dir() {
-                return Err("".into());
-            }
-            let repo = Repository::open(repo_path)?;
-            Ok(Some((user, project, repo)))
-        }
-        None => Ok(None),
+    pub fn open_repository(&self, db: &DB) -> AppResult<Repository> {
+        let conn = db.get_db_conn()?;
+        let user = users::table
+            .filter(users::dsl::id.eq(self.user_id))
+            .get_result::<User>(&*conn)?;
+        let repo_path = Path::new(&format!("{}/{}", user.name, self.name)).to_path_buf();
+        Repository::open(repo_path)
     }
 }

@@ -11,7 +11,6 @@ use error::AppError;
 use models::{User, Project, Repository};
 use super::WWWAuthenticate;
 use db::DB;
-use models::projects;
 use iron_router_ext::RegisterRoute;
 
 
@@ -62,12 +61,17 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
     Ok((username, password))
 }
 
-fn open_repository(req: &mut Request) -> IronResult<(User, Project, Repository)> {
+fn open_repository(req: &mut Request) -> IronResult<(Project, Repository)> {
     let db = req.extensions.get::<DB>().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
-    projects::open_repository(&db, user, project)
+    let project = Project::find_by_id(&db, (user, project))
         .map_err(|err| IronError::new(err, status::InternalServerError))?
-        .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))
+        .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))?;
+    let repo = project.open_repository(&db).map_err(|err| {
+        IronError::new(err, status::InternalServerError)
+    })?;
+    Ok((project, repo))
+
 }
 
 // TODO: check scope
@@ -136,7 +140,7 @@ fn packet_write(data: &str) -> Vec<u8> {
 
 
 fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
-    let (_user, project, repo) = open_repository(req)?;
+    let (project, repo) = open_repository(req)?;
     check_scope(req, service, &project)?;
 
     match req.headers.get::<ContentType>() {
@@ -183,7 +187,7 @@ struct InfoRefs;
 
 fn info_refs(req: &mut Request) -> IronResult<Response> {
     let service = get_service_name(req)?;
-    let (_user, project, repo) = open_repository(req)?;
+    let (project, repo) = open_repository(req)?;
     check_scope(req, service, &project)?;
 
     let mut body = packet_write(&format!("# service=git-{}\n", service));

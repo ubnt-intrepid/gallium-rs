@@ -13,7 +13,6 @@ use gallium::models::{Project, SshKey};
 use gallium::schema::ssh_keys;
 use gallium::config::Config;
 use gallium::db::DB;
-use gallium::models::projects::open_repository;
 
 
 fn build_cli<'a, 'b: 'a>() -> clap::App<'a, 'b> {
@@ -53,9 +52,10 @@ fn access(m: &clap::ArgMatches) -> Result<(), String> {
     )?;
     let (action, user, project) = parse_ssh_command(&s)?;
 
-    let (_user, project, repo) = open_repository(&db, &user, &project)
+    let project = Project::find_by_id(&db, (&user, &project))
         .map_err(|err| err.to_string())?
-        .ok_or_else(|| "Failed to open repository".to_owned())?;
+        .ok_or_else(|| "The project is not created".to_owned())?;
+    let repo = project.open_repository(&db).map_err(|err| err.to_string())?;
 
     let user_id = m.value_of("user-id").and_then(|s| s.parse().ok()).unwrap();
     check_scope(&action, user_id, &project)?;

@@ -7,10 +7,8 @@ use router::Router;
 use iron_json_response::JsonResponse;
 
 use models::Project;
-use models::projects;
 
 use db::DB;
-use config::Config;
 use super::error;
 
 
@@ -100,21 +98,18 @@ fn delete_project(req: &mut Request) -> IronResult<Response> {
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
     let db = req.extensions.get::<DB>().unwrap();
-    let config = req.extensions.get::<Config>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
 
-    let result = projects::open_repository_from_id(db, config, id).map_err(
-        error::server_error,
-    )?;
-    let (_, _, repo) = match result {
-        Some(r) => r,
+    let project: Project = match Project::find_by_id(&db, id).map_err(error::server_error)? {
+        Some(p) => p,
         None => return Ok(Response::with(status::Ok)),
     };
+    let repo = project.open_repository(&db).map_err(error::server_error)?;
 
     repo.remove().map_err(|(_, err)| {
         IronError::new(err, status::InternalServerError)
     })?;
 
+    let conn = db.get_db_conn().map_err(error::server_error)?;
     delete(::schema::projects::table.filter(
         ::schema::projects::dsl::id.eq(id),
     )).execute(&*conn)

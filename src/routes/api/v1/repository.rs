@@ -5,10 +5,8 @@ use router::Router;
 use error::AppError;
 
 use db::DB;
-use config::Config;
-use models::projects;
 use super::error;
-
+use models::Project;
 
 #[derive(Route)]
 #[get(path = "/projects/:id/repository/tree", handler = "show_tree")]
@@ -20,10 +18,10 @@ fn show_tree(req: &mut Request) -> IronResult<Response> {
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
     let db = req.extensions.get::<DB>().unwrap();
-    let config = req.extensions.get::<Config>().unwrap();
-    let (_, _, repo) = projects::open_repository_from_id(db, config, id)
+    let project = Project::find_by_id(&db, id)
         .map_err(error::server_error)?
         .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?;
+    let repo = project.open_repository(&db).map_err(error::server_error)?;
 
     let tree = repo.get_head_tree_objects().map_err(error::server_error)?;
 
