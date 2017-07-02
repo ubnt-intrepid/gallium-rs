@@ -63,11 +63,12 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 
 fn open_repository(req: &mut Request) -> IronResult<(Project, Repository)> {
     let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().unwrap();
     let (user, project) = get_repo_identifier_from_req(req)?;
     let project = Project::find_by_id(&db, (user, project))
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))?;
-    let repo = project.open_repository(&db).map_err(|err| {
+    let repo = project.open_repository(&*conn).map_err(|err| {
         IronError::new(err, status::InternalServerError)
     })?;
     Ok((project, repo))

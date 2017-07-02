@@ -67,13 +67,12 @@ fn create_project(req: &mut Request) -> IronResult<Response> {
         .ok_or_else(|| error::bad_request(""))?;
 
     let db = req.extensions.get::<DB>().unwrap();
-    let project: EncodableProject = Project::create(db, new_project)
-        .map_err(error::server_error)?
-        .into();
+    let project = new_project.insert(db).map_err(error::server_error)?;
 
-    Ok(Response::with(
-        (status::Created, JsonResponse::json(project)),
-    ))
+    Ok(Response::with((
+        status::Created,
+        JsonResponse::json(EncodableProject::from(project)),
+    )))
 }
 
 
@@ -87,12 +86,13 @@ fn delete_project(req: &mut Request) -> IronResult<Response> {
     let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
 
     let db = req.extensions.get::<DB>().unwrap();
+    let conn = db.get_db_conn().map_err(error::server_error)?;
 
     let project: Project = match Project::find_by_id(&db, id).map_err(error::server_error)? {
         Some(p) => p,
         None => return Ok(Response::with(status::Ok)),
     };
-    let repo = project.open_repository(&db).map_err(error::server_error)?;
+    let repo = project.open_repository(&*conn).map_err(error::server_error)?;
 
     repo.remove().map_err(|(_, err)| {
         IronError::new(err, status::InternalServerError)

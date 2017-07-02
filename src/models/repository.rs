@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use git2;
 use serde_json::Value as JsonValue;
 use users::get_user_by_name;
-use error::AppResult;
+use error::{AppResult, AppError};
 
 
 pub struct Repository {
@@ -14,53 +14,48 @@ pub struct Repository {
 }
 
 impl Repository {
-    pub fn create<P: AsRef<Path>>(repo_path: P) -> AppResult<Self> {
-        let repo_path_str = repo_path.as_ref().to_str().unwrap();
-
+    pub(super) fn init<P: AsRef<Path>>(path: P) -> AppResult<Self> {
         // Get uid/gid
         let user = get_user_by_name("git").unwrap();
         let uid = user.uid();
         let gid = user.primary_group_id();
 
         // Create destination directory of repository.
-        Command::new("/bin/mkdir")
-            .args(&["-p", repo_path_str])
-            .uid(uid)
-            .gid(gid)
+        fs::create_dir_all(path.as_ref())?;
+        let status = Command::new("/bin/chown")
+            .args(&["-R", "git:git"])
+            .arg(path.as_ref())
             .spawn()
-            .and_then(|mut ch| ch.wait())
-            .and_then(|st| if st.success() {
-                Ok(())
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "cannot change owner of repository",
-                ))
-            })?;
+            .and_then(|mut ch| ch.wait())?;
+        if !status.success() {
+            return Err(AppError::from(
+                "failed to change permission of registory directory",
+            ));
+        }
 
         // Initialize git repository
         let status = Command::new("/usr/bin/git")
-            .args(&["init", "--bare", repo_path_str])
-            .current_dir(&repo_path)
+            .args(&["init", "--bare"])
+            .current_dir(&path)
             .uid(uid)
             .gid(gid)
             .spawn()
             .and_then(|mut ch| ch.wait())?;
         if !status.success() {
-            return Err(
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    "`git init` exited with non-zero status",
-                ).into(),
-            );
+            return Err(AppError::from("`git init` exited with non-zero status"));
         }
 
-        Self::open(&repo_path).map_err(Into::into)
+        let inner = git2::Repository::open(path)?;
+        Ok(Repository { inner })
     }
 
     pub fn open<P: AsRef<Path>>(path: P) -> AppResult<Self> {
         let inner = git2::Repository::open(path)?;
         Ok(Repository { inner })
+    }
+
+    pub fn remove(self) -> Result<(), (Self, io::Error)> {
+        fs::remove_dir_all(self.inner.path()).map_err(|err| (self, err))
     }
 
     pub fn path(&self) -> &Path {
@@ -120,9 +115,5 @@ impl Repository {
             let message = format!("`git {}` was exited with non-zero status: {}", service, String::from_utf8_lossy(&output.stderr));
             Err(io::Error::new(io::ErrorKind::Other, message).into())
         }
-    }
-
-    pub fn remove(self) -> Result<(), (Self, io::Error)> {
-        fs::remove_dir_all(self.inner.path()).map_err(|err| (self, err))
     }
 }
