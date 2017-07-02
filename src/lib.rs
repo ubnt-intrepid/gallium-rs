@@ -32,11 +32,14 @@ extern crate iron_router_ext;
 #[macro_use]
 extern crate iron_router_codegen;
 
-pub mod config;
-pub mod crypto;
 pub mod db;
+pub mod crypto;
+pub mod config;
 pub mod error;
-pub mod middlewares;
 pub mod models;
 pub mod routes;
 pub mod schema;
+pub mod server;
+
+pub use db::DB;
+pub use config::Config;

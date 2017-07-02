@@ -2,6 +2,7 @@ use r2d2::{Pool, PooledConnection, GetTimeout};
 use r2d2_diesel::ConnectionManager;
 use diesel::pg::PgConnection;
 use error::AppResult;
+use iron::{Request, IronResult, BeforeMiddleware};
 use iron::typemap::Key;
 
 
@@ -25,4 +26,20 @@ impl DB {
 
 impl Key for DB {
     type Value = DB;
+}
+
+
+pub struct DBMiddleware(DB);
+
+impl DBMiddleware {
+    pub fn new(db: DB) -> Self {
+        DBMiddleware(db)
+    }
+}
+
+impl BeforeMiddleware for DBMiddleware {
+    fn before(&self, req: &mut Request) -> IronResult<()> {
+        req.extensions.insert::<DB>(self.0.clone());
+        Ok(())
+    }
 }

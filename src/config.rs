@@ -1,9 +1,9 @@
 use std::{env, fs, path};
+use std::sync::Arc;
 use serde_json;
 use error::AppResult;
+use iron::{Request, IronResult, BeforeMiddleware};
 use iron::typemap::Key;
-use std::sync::Arc;
-
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -31,4 +31,20 @@ impl Config {
 
 impl Key for Config {
     type Value = Arc<Config>;
+}
+
+
+pub struct ConfigMiddleware(Arc<Config>);
+
+impl ConfigMiddleware {
+    pub fn new(config: Config) -> Self {
+        ConfigMiddleware(Arc::new(config))
+    }
+}
+
+impl BeforeMiddleware for ConfigMiddleware {
+    fn before(&self, req: &mut Request) -> IronResult<()> {
+        req.extensions.insert::<Config>(self.0.clone());
+        Ok(())
+    }
 }

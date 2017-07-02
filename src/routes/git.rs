@@ -14,7 +14,7 @@ use db::DB;
 use iron_router_ext::RegisterRoute;
 
 
-pub(super) fn create_git_handler() -> Router {
+pub(super) fn create_git_router() -> Router {
     let mut router = Router::new();
     router.register(InfoRefs);
     router.register(ReceivePack);

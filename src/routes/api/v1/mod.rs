@@ -9,7 +9,7 @@ mod users;
 use router::Router;
 use iron_router_ext::RegisterRoute;
 
-pub fn create_api_handler() -> Router {
+pub fn create_api_router() -> Router {
     let mut router = Router::new();
     router.register(projects::GetProjects);
     router.register(projects::GetProject);

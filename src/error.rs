@@ -12,5 +12,6 @@ error_chain! {
         SerdeJson(::serde_json::Error);
         JsonWebToken(::jsonwebtoken::errors::Error);
         Bcrypt(::bcrypt::BcryptError);
+        Hyper(::hyper::Error);
     }
 }
