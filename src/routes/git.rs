@@ -23,10 +23,7 @@ pub(super) fn create_git_handler() -> Router {
 }
 
 
-fn get_repo_identifier_from_req<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> {
-    let route = req.extensions.get::<Router>().unwrap();
-    let user = route.find("user").unwrap();
-    let project = route.find("project").unwrap();
+fn check_repo_identifier<'a, 'b>(user: &'a str, project: &'b str) -> IronResult<(&'a str, &'b str)> {
     let project = project.trim_right_matches("/");
     if !project.ends_with(".git") {
         return Err(IronError::new(
@@ -61,10 +58,10 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
     Ok((username, password))
 }
 
-fn open_repository(req: &mut Request) -> IronResult<(Project, Repository)> {
+fn open_repository(req: &mut Request, user: &str, project: &str) -> IronResult<(Project, Repository)> {
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().unwrap();
-    let (user, project) = get_repo_identifier_from_req(req)?;
+    let (user, project) = check_repo_identifier(user, project)?;
     let project = Project::find_by_id(&db, (user, project))
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))?;
@@ -140,8 +137,8 @@ fn packet_write(data: &str) -> Vec<u8> {
 }
 
 
-fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> {
-    let (project, repo) = open_repository(req)?;
+fn handle_service_rpc(req: &mut Request, user: &str, project: &str, service: &str) -> IronResult<Response> {
+    let (project, repo) = open_repository(req, user, project)?;
     check_scope(req, service, &project)?;
 
     match req.headers.get::<ContentType>() {
@@ -186,9 +183,9 @@ fn handle_service_rpc(req: &mut Request, service: &str) -> IronResult<Response> 
 #[get(path = "/:user/:project/info/refs", handler = "info_refs")]
 struct InfoRefs;
 
-fn info_refs(req: &mut Request) -> IronResult<Response> {
+fn info_refs(req: &mut Request, user: String, project: String) -> IronResult<Response> {
     let service = get_service_name(req)?;
-    let (project, repo) = open_repository(req)?;
+    let (project, repo) = open_repository(req, &user, &project)?;
     check_scope(req, service, &project)?;
 
     let mut body = packet_write(&format!("# service=git-{}\n", service));
@@ -217,8 +214,8 @@ fn info_refs(req: &mut Request) -> IronResult<Response> {
 struct ReceivePack;
 
 #[inline]
-fn receive_pack(req: &mut Request) -> IronResult<Response> {
-    handle_service_rpc(req, "receive-pack")
+fn receive_pack(req: &mut Request, user: String, project: String) -> IronResult<Response> {
+    handle_service_rpc(req, &user, &project, "receive-pack")
 }
 
 
@@ -228,6 +225,6 @@ fn receive_pack(req: &mut Request) -> IronResult<Response> {
 struct UploadPack;
 
 #[inline]
-fn upload_pack(req: &mut Request) -> IronResult<Response> {
-    handle_service_rpc(req, "upload-pack")
+fn upload_pack(req: &mut Request, user: String, project: String) -> IronResult<Response> {
+    handle_service_rpc(req, &user, &project, "upload-pack")
 }

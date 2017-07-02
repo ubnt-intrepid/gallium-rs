@@ -52,6 +52,61 @@ pub fn derive_iron_route(input: TokenStream) -> TokenStream {
             let path = path.expect("failed to parse attribute");
             let handler = handler.expect("failed to parse attribute");
 
+            // extract route parameters
+            let params: Vec<&str> = path.split("/")
+                .filter_map(|s| if s.starts_with(":") {
+                    Some(s.trim_left_matches(":"))
+                } else {
+                    None
+                })
+                .collect();
+
+            let handler_prefix_code = if params.len() == 1 {
+                let param = &params[0];
+                let ident = Ident::new(*param);
+                quote! {
+                    let #ident = {
+                        let router = req.extensions.get::<::router::Router>().unwrap();
+                        let #ident = router.find(#param).unwrap().parse().map_err(|err| ::iron::IronError::new(err, ::iron::status::InternalServerError))?;
+                        #ident
+                    };
+                }
+            } else if params.len() > 0 {
+                let param_bodies = params.iter().map(|&param| {
+                    let ident = Ident::new(param);
+                    quote!{
+                        let #ident = router.find(#param).unwrap().parse().map_err(|err| ::iron::IronError::new(err, ::iron::status::InternalServerError))?;
+                    }
+                });
+                let param_names: Vec<_> = params
+                    .iter()
+                    .map(|&param| {
+                        let ident = Ident::new(param);
+                        quote!(#ident)
+                    })
+                    .collect();
+                let param_names2 = param_names.clone();
+                quote! {
+                    let (#(#param_names),*) = {
+                        let router = req.extensions.get::<::router::Router>().unwrap();
+                        #(#param_bodies)*
+                        (#(#param_names2),*)
+                    };
+                }
+            } else {
+                quote!()
+            };
+
+            let handler_params = if params.len() > 0 {
+                let params = params.iter().map(|&param| {
+                    let ident = Ident::new(param);
+                    quote!(#ident,)
+                });
+                quote!((req, #(#params)*))
+            } else {
+                quote!((req))
+            };
+
             quote!(
                 impl ::iron_router_ext::Route for #name {
                     fn route_id() -> &'static str {
@@ -67,7 +122,8 @@ pub fn derive_iron_route(input: TokenStream) -> TokenStream {
                 impl ::iron::Handler for #name {
                     #[inline]
                     fn handle(&self, req: &mut ::iron::Request) -> ::iron::IronResult<::iron::Response> {
-                        #handler (req)
+                        #handler_prefix_code
+                        #handler #handler_params
                     }
                 }
             )

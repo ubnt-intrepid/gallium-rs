@@ -1,7 +1,6 @@
 use bodyparser::Struct;
 use iron::prelude::*;
 use iron::status;
-use router::Router;
 
 use error::AppError;
 use db::DB;
@@ -30,10 +29,7 @@ fn get_users(req: &mut Request) -> IronResult<Response> {
 #[get(path = "/users/:id", handler = "get_user")]
 pub(super) struct GetUser;
 
-fn get_user(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-
+fn get_user(req: &mut Request, id: i32) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let user: EncodableUser = User::find_by_id(db, id)
         .map_err(error::server_error)?

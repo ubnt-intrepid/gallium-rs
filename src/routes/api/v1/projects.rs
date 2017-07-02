@@ -3,7 +3,6 @@ use diesel::prelude::*;
 use iron::prelude::*;
 use iron::status;
 use bodyparser::Struct;
-use router::Router;
 
 use models::{Project, NewProject};
 
@@ -37,10 +36,7 @@ fn get_projects(req: &mut Request) -> IronResult<Response> {
 #[get(path = "/projects/:id", handler = "get_project")]
 pub(super) struct GetProject;
 
-fn get_project(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-
+fn get_project(req: &mut Request, id: i32) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
 
@@ -77,10 +73,7 @@ fn create_project(req: &mut Request) -> IronResult<Response> {
 #[delete(path = "/projects/:id", handler = "delete_project")]
 pub(super) struct DeleteProject;
 
-fn delete_project(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-
+fn delete_project(req: &mut Request, id: i32) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
 

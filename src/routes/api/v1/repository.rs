@@ -3,7 +3,6 @@ use iron::status;
 use std::borrow::Borrow;
 use iron::headers::ContentType;
 use iron::modifiers::Header;
-use router::Router;
 use base64;
 use url::Url;
 
@@ -26,10 +25,7 @@ fn open_repository_from_id(req: &Request, id: i32) -> IronResult<Repository> {
 #[get(path = "/projects/:id/repository/tree", handler = "show_tree")]
 pub(super) struct ShowTree;
 
-fn show_tree(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-
+fn show_tree(req: &mut Request, id: i32) -> IronResult<Response> {
     let (mut refname, mut path, mut recursive) = (None, None, None);
     let url: Url = req.url.clone().into();
     for (key, val) in url.query_pairs() {
@@ -56,13 +52,9 @@ fn show_tree(req: &mut Request) -> IronResult<Response> {
 #[get(path = "/projects/:id/repository/blobs/:sha", handler = "get_blob")]
 pub(super) struct GetBlob;
 
-fn get_blob(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-    let sha = router.find("sha").unwrap();
-
+fn get_blob(req: &mut Request, id: i32, sha: String) -> IronResult<Response> {
     let repo = open_repository_from_id(req, id)?;
-    let content = repo.get_blob_content(sha)
+    let content = repo.get_blob_content(&sha)
         .map_err(error::server_error)?
         .map(|content| base64::encode(&content))
         .ok_or_else(|| error::not_found(""))?;
@@ -80,13 +72,9 @@ fn get_blob(req: &mut Request) -> IronResult<Response> {
 #[get(path = "/projects/:id/repository/blobs/:sha/raw", handler = "get_raw_blob")]
 pub(super) struct GetRawBlob;
 
-fn get_raw_blob(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-    let sha = router.find("sha").unwrap();
-
+fn get_raw_blob(req: &mut Request, id: i32, sha: String) -> IronResult<Response> {
     let repo = open_repository_from_id(req, id)?;
-    let content = repo.get_blob_content(sha)
+    let content = repo.get_blob_content(&sha)
         .map_err(error::server_error)?
         .ok_or_else(|| error::not_found(""))?;
     Ok(Response::with(

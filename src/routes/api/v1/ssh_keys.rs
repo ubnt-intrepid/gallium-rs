@@ -2,7 +2,6 @@ use diesel::{insert, delete};
 use diesel::prelude::*;
 use iron::prelude::*;
 use bodyparser::Struct;
-use router::Router;
 
 use models::{SshKey, NewSshKey};
 use schema::ssh_keys;
@@ -33,10 +32,7 @@ fn get_ssh_keys(req: &mut Request) -> IronResult<Response> {
 #[get(path = "/ssh_keys/:id", handler = "get_ssh_key")]
 pub(super) struct GetKey;
 
-fn get_ssh_key(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-
+fn get_ssh_key(req: &mut Request, id: i32) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
     let key: EncodablePublicKey = ssh_keys::table
@@ -77,10 +73,7 @@ fn add_ssh_key(req: &mut Request) -> IronResult<Response> {
 #[delete(path = "/ssh_keys/:id", handler = "delete_ssh_key")]
 pub(super) struct DeleteKey;
 
-fn delete_ssh_key(req: &mut Request) -> IronResult<Response> {
-    let router = req.extensions.get::<Router>().unwrap();
-    let id: i32 = router.find("id").and_then(|s| s.parse().ok()).unwrap();
-
+fn delete_ssh_key(req: &mut Request, id: i32) -> IronResult<Response> {
     let db = req.extensions.get::<DB>().unwrap();
     let conn = db.get_db_conn().map_err(error::server_error)?;
 
