@@ -19,7 +19,7 @@ pub struct Repository {
 }
 
 impl Repository {
-    pub fn create<P: AsRef<Path>>(repo_path: P) -> io::Result<Self> {
+    pub fn create<P: AsRef<Path>>(repo_path: P) -> AppResult<Self> {
         let repo_path_str = repo_path.as_ref().to_str().unwrap();
 
         // Get uid/gid
@@ -52,16 +52,18 @@ impl Repository {
             .spawn()
             .and_then(|mut ch| ch.wait())?;
         if !status.success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "`git init` exited with non-zero status",
-            ));
+            return Err(
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    "`git init` exited with non-zero status",
+                ).into(),
+            );
         }
 
-        Ok(Self::open(&repo_path).unwrap())
+        Self::open(&repo_path).map_err(Into::into)
     }
 
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, git2::Error> {
+    pub fn open<P: AsRef<Path>>(path: P) -> AppResult<Self> {
         let inner = git2::Repository::open(path)?;
         Ok(Repository { inner })
     }
@@ -70,7 +72,7 @@ impl Repository {
         self.inner.path()
     }
 
-    pub fn get_head_tree_objects(&self) -> Result<Vec<JsonValue>, git2::Error> {
+    pub fn get_head_tree_objects(&self) -> AppResult<Vec<JsonValue>> {
         let head = self.inner.head()?;
         let target = head.target().ok_or_else(|| git2::Error::from_str(""))?;
         let commit = self.inner.find_commit(target)?;
@@ -97,7 +99,7 @@ impl Repository {
             .collect()
     }
 
-    pub fn run_rpc_command<'a>(&self, service: &str, stdin: Option<&mut Box<Read + 'a>>) -> io::Result<Vec<u8>> {
+    pub fn run_rpc_command<'a>(&self, service: &str, stdin: Option<&mut Box<Read + 'a>>) -> AppResult<Vec<u8>> {
         let args: Vec<&str> = if stdin.is_some() {
             vec![service, "--stateless-rpc", "."]
         } else {
@@ -121,7 +123,7 @@ impl Repository {
             Ok(output.stdout)
         } else {
             let message = format!("`git {}` was exited with non-zero status: {}", service, String::from_utf8_lossy(&output.stderr));
-            Err(io::Error::new(io::ErrorKind::Other, message))
+            Err(io::Error::new(io::ErrorKind::Other, message).into())
         }
     }
 
