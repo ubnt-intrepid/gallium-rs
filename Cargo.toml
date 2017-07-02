@@ -46,6 +46,7 @@ jsonwebtoken = "*"
 error-chain = "*"
 ring = "*"
 url = "~1.5"
+base64 = "~0.6"
 
 iron-router-ext = { path = "pkg/iron-router-ext" }
 iron-router-codegen = { path = "pkg/iron-router-codegen" }

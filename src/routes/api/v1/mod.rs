@@ -14,6 +14,8 @@ pub fn create_api_handler() -> Router {
     router.register(projects::CreateProject);
     router.register(projects::DeleteProject);
     router.register(repository::ShowTree);
+    router.register(repository::GetBlob);
+    router.register(repository::GetRawBlob);
     router.register(ssh_keys::GetKeys);
     router.register(ssh_keys::GetKey);
     router.register(ssh_keys::AddKey);
