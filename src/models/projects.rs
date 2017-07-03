@@ -2,7 +2,6 @@ use chrono::NaiveDateTime;
 use schema::{users, projects};
 use super::users::User;
 use super::repository::Repository;
-use db::DB;
 use error::AppResult;
 
 use diesel::prelude::*;
@@ -43,8 +42,7 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn find_by_id<I: Into<ProjectID>>(db: &DB, id: I) -> AppResult<Option<Self>> {
-        let conn = db.get_db_conn()?;
+    pub fn find_by_id<I: Into<ProjectID>>(conn: &PgConnection, id: I) -> AppResult<Option<Self>> {
         match id.into() {
             ProjectID::Number(id) => {
                 projects::table
@@ -91,7 +89,7 @@ pub struct NewProject {
 }
 
 impl NewProject {
-    pub fn insert(&self, db: &DB) -> AppResult<Project> {
+    pub fn insert(&self, conn: &PgConnection) -> AppResult<Project> {
         use diesel::types::{Int4, Timestamp, Text, Nullable};
         use diesel::expression::dsl::sql;
 
@@ -105,12 +103,9 @@ impl NewProject {
             escape_str(&self.user),
         ));
 
-        let conn = db.get_db_conn()?;
-        conn.transaction(|| -> AppResult<Project> {
-            let project: Project = query.get_result(&*conn)?;
-            project.init_repository(&*conn)?;
-            Ok(project)
-        })
+        let project: Project = query.get_result(&*conn)?;
+        project.init_repository(&*conn)?;
+        Ok(project)
     }
 }
 

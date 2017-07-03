@@ -53,7 +53,7 @@ fn access(m: &clap::ArgMatches) -> Result<(), String> {
     )?;
     let (action, user, project) = parse_ssh_command(&s)?;
 
-    let project = Project::find_by_id(&db, (&user, &project))
+    let project = Project::find_by_id(&conn, (&user, &project))
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "The project is not created".to_owned())?;
     let repo = project.open_repository(&*conn).map_err(

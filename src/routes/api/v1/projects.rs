@@ -16,8 +16,7 @@ use super::{response, error};
 pub(super) struct GetProjects;
 
 fn get_projects(req: &mut Request) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
 
     use schema::projects;
     let repos: Vec<EncodableProject> = projects::table
@@ -37,8 +36,7 @@ fn get_projects(req: &mut Request) -> IronResult<Response> {
 pub(super) struct GetProject;
 
 fn get_project(req: &mut Request, id: i32) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
 
     use schema::projects;
     let repo: EncodableProject = projects::table
@@ -61,8 +59,8 @@ fn create_project(req: &mut Request) -> IronResult<Response> {
         .and_then(|s| s)
         .ok_or_else(|| error::bad_request(""))?;
 
-    let db = req.extensions.get::<DB>().unwrap();
-    let project = new_project.insert(db).map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
+    let project = new_project.insert(&conn).map_err(error::server_error)?;
 
     response::created(EncodableProject::from(project))
 }
@@ -74,10 +72,9 @@ fn create_project(req: &mut Request) -> IronResult<Response> {
 pub(super) struct DeleteProject;
 
 fn delete_project(req: &mut Request, id: i32) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
 
-    let project: Project = match Project::find_by_id(&db, id).map_err(error::server_error)? {
+    let project: Project = match Project::find_by_id(&conn, id).map_err(error::server_error)? {
         Some(p) => p,
         None => return Ok(Response::with(status::Ok)),
     };
@@ -87,7 +84,6 @@ fn delete_project(req: &mut Request, id: i32) -> IronResult<Response> {
         IronError::new(err, status::InternalServerError)
     })?;
 
-    let conn = db.get_db_conn().map_err(error::server_error)?;
     delete(::schema::projects::table.filter(
         ::schema::projects::dsl::id.eq(id),
     )).execute(&*conn)

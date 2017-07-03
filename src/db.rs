@@ -19,6 +19,11 @@ impl DB {
         Ok(DB(pool))
     }
 
+    pub fn from_req(req: &mut Request) -> Result<PooledDbConnection, GetTimeout> {
+        let db = req.extensions.get::<Self>().unwrap();
+        db.0.get()
+    }
+
     pub fn get_db_conn(&self) -> Result<PooledDbConnection, GetTimeout> {
         self.0.get()
     }

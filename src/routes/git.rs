@@ -60,10 +60,9 @@ fn get_basic_auth_param<'a>(req: &'a Request) -> IronResult<(&'a str, &'a str)> 
 }
 
 fn open_repository(req: &mut Request, user: &str, project: &str) -> IronResult<(Project, Repository)> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().unwrap();
+    let conn = DB::from_req(req).unwrap();
     let (user, project) = check_repo_identifier(user, project)?;
-    let project = Project::find_by_id(&db, (user, project))
+    let project = Project::find_by_id(&conn, (user, project))
         .map_err(|err| IronError::new(err, status::InternalServerError))?
         .ok_or_else(|| IronError::new(AppError::from("Git"), status::NotFound))?;
     let repo = project.open_repository(&*conn).map_err(|err| {
@@ -81,11 +80,11 @@ fn open_repository(req: &mut Request, user: &str, project: &str) -> IronResult<(
 //   - private の場合のみ認証必須
 //   - 現状は実質 public のみであるため認証回りは省略している
 fn check_scope(req: &mut Request, service: &str, project: &Project) -> IronResult<()> {
-    let db = req.extensions.get::<DB>().unwrap();
+    let conn = DB::from_req(req).unwrap();
     match service {
         "receive-pack" => {
             let (username, password) = get_basic_auth_param(req)?;
-            let auth_user = User::authenticate(&db, username, password)
+            let auth_user = User::authenticate(&conn, username, password)
                 .map_err(|err| IronError::new(err, status::InternalServerError))?
                 .ok_or_else(|| IronError::new(AppError::from(""), status::Unauthorized))?;
 

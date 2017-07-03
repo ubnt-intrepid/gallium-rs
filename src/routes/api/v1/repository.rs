@@ -11,10 +11,9 @@ use models::{Project, Repository};
 use super::{response, error};
 
 
-fn open_repository_from_id(req: &Request, id: i32) -> IronResult<Repository> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
-    let project = Project::find_by_id(&db, id)
+fn open_repository_from_id(req: &mut Request, id: i32) -> IronResult<Repository> {
+    let conn = DB::from_req(req).map_err(error::server_error)?;
+    let project = Project::find_by_id(&conn, id)
         .map_err(error::server_error)?
         .ok_or_else(|| error::not_found(""))?;
     project.open_repository(&*conn).map_err(error::server_error)

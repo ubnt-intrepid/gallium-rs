@@ -14,8 +14,7 @@ use super::{response, error};
 pub(super) struct GetKeys;
 
 fn get_ssh_keys(req: &mut Request) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
     let keys: Vec<EncodablePublicKey> = ssh_keys::table
         .load::<SshKey>(&*conn)
         .map_err(error::server_error)?
@@ -33,8 +32,7 @@ fn get_ssh_keys(req: &mut Request) -> IronResult<Response> {
 pub(super) struct GetKey;
 
 fn get_ssh_key(req: &mut Request, id: i32) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
     let key: EncodablePublicKey = ssh_keys::table
         .filter(ssh_keys::dsl::id.eq(id))
         .get_result::<SshKey>(&*conn)
@@ -56,8 +54,7 @@ fn add_ssh_key(req: &mut Request) -> IronResult<Response> {
         .and_then(|s| s)
         .ok_or_else(|| error::bad_request(""))?;
 
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
     let key: EncodablePublicKey = insert(&new_key)
         .into(ssh_keys::table)
         .get_result::<SshKey>(&*conn)
@@ -74,8 +71,7 @@ fn add_ssh_key(req: &mut Request) -> IronResult<Response> {
 pub(super) struct DeleteKey;
 
 fn delete_ssh_key(req: &mut Request, id: i32) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let conn = db.get_db_conn().map_err(error::server_error)?;
+    let conn = DB::from_req(req).map_err(error::server_error)?;
 
     delete(ssh_keys::table.filter(ssh_keys::dsl::id.eq(id)))
         .execute(&*conn)

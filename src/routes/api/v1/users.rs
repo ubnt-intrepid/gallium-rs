@@ -13,8 +13,8 @@ use super::{response, error};
 pub(super) struct GetUsers;
 
 fn get_users(req: &mut Request) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let users: Vec<_> = User::load_users(db)
+    let conn = DB::from_req(req).map_err(error::server_error)?;
+    let users: Vec<_> = User::load_users(&conn)
         .map_err(error::server_error)?
         .into_iter()
         .map(EncodableUser::from)
@@ -30,8 +30,8 @@ fn get_users(req: &mut Request) -> IronResult<Response> {
 pub(super) struct GetUser;
 
 fn get_user(req: &mut Request, id: i32) -> IronResult<Response> {
-    let db = req.extensions.get::<DB>().unwrap();
-    let user: EncodableUser = User::find_by_id(db, id)
+    let conn = DB::from_req(req).map_err(error::server_error)?;
+    let user: EncodableUser = User::find_by_id(&conn, id)
         .map_err(error::server_error)?
         .ok_or_else(|| IronError::new(AppError::from(""), status::NotFound))?
         .into();
@@ -57,9 +57,9 @@ fn create_user(req: &mut Request) -> IronResult<Response> {
         .and_then(|s| s)
         .ok_or_else(|| error::bad_request(""))?;
 
-    let db = req.extensions.get::<DB>().unwrap();
+    let conn = DB::from_req(req).map_err(error::server_error)?;
     let user = User::create(
-        db,
+        &conn,
         &params.name,
         &params.password,
         params.screen_name.as_ref().map(|s| s.as_str()),

@@ -1,10 +1,10 @@
 use bcrypt;
 use chrono::NaiveDateTime;
 use diesel::insert;
+use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use iron::typemap::Key;
 
-use db::DB;
 use error::AppResult;
 use schema::{users, ssh_keys, projects};
 
@@ -30,7 +30,7 @@ struct NewUser<'a> {
 
 
 impl User {
-    pub fn create(db: &DB, name: &str, password: &str, screen_name: Option<&str>) -> AppResult<Self> {
+    pub fn create(conn: &PgConnection, name: &str, password: &str, screen_name: Option<&str>) -> AppResult<Self> {
         let bcrypt_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
         let new_user = NewUser {
             name: name,
@@ -38,20 +38,17 @@ impl User {
             screen_name: screen_name,
         };
 
-        let conn = db.get_db_conn()?;
         insert(&new_user)
             .into(users::table)
             .get_result::<User>(&*conn)
             .map_err(Into::into)
     }
 
-    pub fn load_users(db: &DB) -> AppResult<Vec<Self>> {
-        let conn = db.get_db_conn()?;
+    pub fn load_users(conn: &PgConnection) -> AppResult<Vec<Self>> {
         users::table.load::<User>(&*conn).map_err(Into::into)
     }
 
-    pub fn find_by_id(db: &DB, id: i32) -> AppResult<Option<Self>> {
-        let conn = db.get_db_conn()?;
+    pub fn find_by_id(conn: &PgConnection, id: i32) -> AppResult<Option<Self>> {
         users::table
             .filter(users::dsl::id.eq(id))
             .get_result::<User>(&*conn)
@@ -59,8 +56,7 @@ impl User {
             .map_err(Into::into)
     }
 
-    pub fn authenticate(db: &DB, username: &str, password: &str) -> AppResult<Option<Self>> {
-        let conn = db.get_db_conn()?;
+    pub fn authenticate(conn: &PgConnection, username: &str, password: &str) -> AppResult<Option<Self>> {
         let user = users::table
             .filter(users::dsl::name.eq(username))
             .get_result::<User>(&*conn)
